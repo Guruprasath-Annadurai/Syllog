@@ -1,0 +1,41 @@
+(* Syllog grammar — v0.1 subset (lexer + parser scope only) *)
+
+program        = { item } ;
+item           = function_decl | let_decl ;
+
+function_decl  = "fn" , identifier , "(" , [ param_list ] , ")" ,
+                 [ "->" , type ] , block ;
+param_list     = param , { "," , param } ;
+param          = identifier , ":" , type ;
+
+let_decl       = "let" , identifier , [ ":" , type ] , "=" , expression ;
+
+type           = identifier ;
+
+block          = "{" , { statement } , "}" ;
+statement      = let_decl
+               | expr_statement
+               | return_statement
+               | if_statement
+               | block ;
+
+expr_statement    = expression ;
+return_statement  = "return" , [ expression ] ;
+if_statement      = "if" , expression , block , [ "else" , ( block | if_statement ) ] ;
+
+expression     = equality ;
+equality       = comparison , { ( "==" | "!=" ) , comparison } ;
+comparison     = term , { ( "<" | "<=" | ">" | ">=" ) , term } ;
+term           = factor , { ( "+" | "-" ) , factor } ;
+factor         = unary , { ( "*" | "/" | "%" ) , unary } ;
+unary          = [ "!" | "-" ] , call ;
+call           = primary , { "(" , [ arg_list ] , ")" } ;
+arg_list       = expression , { "," , expression } ;
+primary        = number | string | "true" | "false" | identifier
+               | "(" , expression , ")" ;
+
+number         = digit , { digit } , [ "." , digit , { digit } ] ;
+string         = '"' , { character } , '"' ;
+identifier     = ( letter | "_" ) , { letter | digit | "_" } ;
+letter         = "a".."z" | "A".."Z" ;
+digit          = "0".."9" ;
