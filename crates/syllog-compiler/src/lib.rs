@@ -1,5 +1,6 @@
 //! Syllog compilation orchestration and diagnostic presentation.
 
+pub mod database;
 pub mod hir;
 mod lower;
 
