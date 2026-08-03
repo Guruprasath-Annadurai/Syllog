@@ -1,10 +1,12 @@
 //! Syllog compilation orchestration and diagnostic presentation.
 
+mod async_lower;
 pub mod database;
 pub mod hir;
 mod lower;
 mod mir_lower;
 
+pub use async_lower::{AsyncLowerError, lower_async_state_machines};
 pub use lower::lower_to_hir;
 pub use mir_lower::lower_to_mir;
 

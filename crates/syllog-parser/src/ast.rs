@@ -294,6 +294,8 @@ pub struct Expr {
 /// Supported expression forms.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ExprKind {
+    /// Suspends the enclosing async function until the operand is ready.
+    Await(Box<Expr>),
     /// A scalar literal.
     Literal(Literal),
     /// A qualified name.

@@ -242,6 +242,7 @@ impl TypedExpr {
                     }
                 }
             }
+            HirExprKind::Await(operand) => operand.walk(visit),
             HirExprKind::Literal(_) | HirExprKind::Reference { .. } => {}
         }
     }
@@ -251,6 +252,8 @@ impl TypedExpr {
 /// identities rather than strings.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum HirExprKind {
+    /// Awaited value and suspension point.
+    Await(Box<TypedExpr>),
     /// Scalar literal.
     Literal(Literal),
     /// Local, global, or variant reference.

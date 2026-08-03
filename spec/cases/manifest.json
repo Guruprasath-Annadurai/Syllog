@@ -181,6 +181,20 @@
       "rules": ["SYL-MODULE-SYNTAX-001"],
       "polarity": "negative",
       "expected": { "kind": "diagnostics", "codes": ["SYL0001"] }
+    },
+    {
+      "edition": "2026",
+      "source": "async/await_pass.syl",
+      "rules": ["SYL-ASYNC-AWAIT-001"],
+      "polarity": "positive",
+      "expected": { "kind": "pass" }
+    },
+    {
+      "edition": "2026",
+      "source": "async/await_outside_async.syl",
+      "rules": ["SYL-ASYNC-AWAIT-001"],
+      "polarity": "negative",
+      "expected": { "kind": "diagnostics", "codes": ["SYL2501"] }
     }
   ]
 }

@@ -1,5 +1,9 @@
 //! WebAssembly isolation boundary used by future `evo` execution.
 
+mod task;
+
+pub use task::*;
+
 use anyhow::Context;
 use std::collections::HashSet;
 use wasmtime::{Config, Engine, Linker, Module, ResourceLimiter, Store, Trap};

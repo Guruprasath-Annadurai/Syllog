@@ -58,6 +58,7 @@ struct Analyzer<'a> {
     functions: HashMap<String, FunctionSignature>,
     agents: HashMap<String, AgentContract>,
     states: HashMap<String, Vec<ResolvedType>>,
+    async_context: bool,
 }
 
 /// Resolves names and validates static semantics for a parsed source file.
@@ -142,6 +143,7 @@ impl<'a> Analyzer<'a> {
             functions: HashMap::new(),
             agents: HashMap::new(),
             states: HashMap::new(),
+            async_context: false,
         }
     }
 
@@ -496,7 +498,10 @@ impl<'a> Analyzer<'a> {
         for (parameter, ty) in node.parameters.iter().zip(&signature.parameters) {
             scope.insert(parameter.name.clone(), ty.clone());
         }
+        let previous = self.async_context;
+        self.async_context = node.asynchronous;
         self.check_block(&node.body, &mut scope, &signature.result);
+        self.async_context = previous;
     }
 
     fn check_state(&mut self, node: &StateNode) {
@@ -639,6 +644,16 @@ impl<'a> Analyzer<'a> {
         expected: Option<&ResolvedType>,
     ) -> ResolvedType {
         match &expression.kind {
+            ExprKind::Await(operand) => {
+                if !self.async_context {
+                    self.push_error(
+                        "SYL2501",
+                        "'await' is only valid inside an async function",
+                        expression.span,
+                    );
+                }
+                self.infer_expr(operand, scope, expected)
+            }
             ExprKind::Literal(literal) => {
                 self.infer_literal(literal, expression.span, scope, expected)
             }

@@ -11,7 +11,7 @@ fn load_cases_preserves_expected_diagnostic_codes() {
         .expect("repository path should resolve");
     let cases = load_cases(&repository.join("spec/cases")).expect("manifest should load");
 
-    assert_eq!(cases.len(), 24);
+    assert_eq!(cases.len(), 26);
     let unknown_value = cases
         .iter()
         .find(|case| case.source.ends_with("semantics/unknown_value.syl"))

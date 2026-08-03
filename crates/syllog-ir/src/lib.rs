@@ -23,6 +23,142 @@ pub struct BlockId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct LocalId(pub u32);
 
+/// Stable state index within one lowered async function.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct AsyncStateId(pub u32);
+
+/// Explicit transition in a verified async state machine.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AsyncTransition {
+    /// Enters the first executable state.
+    Start {
+        /// First suspension or completion state.
+        next: AsyncStateId,
+    },
+    /// Yields execution until the awaited operation wakes the task.
+    Suspend {
+        /// Zero-based source-order await point.
+        await_index: u32,
+        /// State entered after a wake.
+        resume: AsyncStateId,
+        /// Shared cancellation/drop state.
+        cancel: AsyncStateId,
+    },
+    /// Restores live locals and continues execution.
+    Resume {
+        /// Next suspension or completion state.
+        next: AsyncStateId,
+        /// Shared panic/drop state.
+        panic: AsyncStateId,
+    },
+    /// Returns the function result.
+    Complete,
+    /// Runs the single terminal drop path after cancellation or panic.
+    Cancel {
+        /// Locals whose deterministic drop flags are stored in the frame.
+        drop_locals: Vec<DefId>,
+    },
+}
+
+/// One tagged async-machine state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AsyncState {
+    /// Contiguous state identity.
+    pub id: AsyncStateId,
+    /// Transition executed from this state.
+    pub transition: AsyncTransition,
+}
+
+/// Verified async frame and transition graph for one source function.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AsyncStateMachine {
+    /// Source function identity.
+    pub function: DefId,
+    /// Every task must be attached to a structured parent scope.
+    pub parent_scope_required: bool,
+    /// Locals conservatively retained across suspension.
+    pub live_locals: Vec<DefId>,
+    /// Contiguous state table beginning at state zero.
+    pub states: Vec<AsyncState>,
+}
+
+/// Invalid async-machine graph.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AsyncVerificationError {
+    /// The state table is empty or IDs are not contiguous.
+    InvalidStateTable,
+    /// A transition targets a missing state.
+    InvalidTarget {
+        /// Referencing state.
+        state: AsyncStateId,
+        /// Missing target.
+        target: AsyncStateId,
+    },
+    /// There is not exactly one completion and one cancellation/drop state.
+    InvalidTerminalCount,
+    /// An async task has no mandatory parent scope.
+    MissingParentScope,
+}
+
+/// Verifies structural async state-machine invariants.
+///
+/// # Errors
+///
+/// Returns deterministic graph errors for invalid IDs, targets, terminal paths,
+/// or missing structured-parent requirements.
+pub fn verify_async_machine(
+    machine: &AsyncStateMachine,
+) -> Result<(), Vec<AsyncVerificationError>> {
+    let mut errors = Vec::new();
+    if machine.states.is_empty()
+        || machine
+            .states
+            .iter()
+            .enumerate()
+            .any(|(index, state)| state.id.0 != u32::try_from(index).unwrap_or(u32::MAX))
+    {
+        errors.push(AsyncVerificationError::InvalidStateTable);
+    }
+    if !machine.parent_scope_required {
+        errors.push(AsyncVerificationError::MissingParentScope);
+    }
+    let length = machine.states.len();
+    for state in &machine.states {
+        let targets = match state.transition {
+            AsyncTransition::Start { next } => vec![next],
+            AsyncTransition::Suspend { resume, cancel, .. } => vec![resume, cancel],
+            AsyncTransition::Resume { next, panic } => vec![next, panic],
+            AsyncTransition::Complete | AsyncTransition::Cancel { .. } => Vec::new(),
+        };
+        for target in targets {
+            if usize::try_from(target.0).map_or(true, |index| index >= length) {
+                errors.push(AsyncVerificationError::InvalidTarget {
+                    state: state.id,
+                    target,
+                });
+            }
+        }
+    }
+    let complete = machine
+        .states
+        .iter()
+        .filter(|state| matches!(state.transition, AsyncTransition::Complete))
+        .count();
+    let cancel = machine
+        .states
+        .iter()
+        .filter(|state| matches!(state.transition, AsyncTransition::Cancel { .. }))
+        .count();
+    if complete != 1 || cancel != 1 {
+        errors.push(AsyncVerificationError::InvalidTerminalCount);
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
+}
+
 /// Runtime-representable MIR types in the first executable subset.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MirType {

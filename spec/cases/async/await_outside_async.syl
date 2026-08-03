@@ -1,0 +1,5 @@
+fn ready(value: U64) -> U64 { value }
+
+fn task() -> U64 {
+    await ready(7)
+}

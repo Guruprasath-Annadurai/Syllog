@@ -10,8 +10,10 @@ rust-version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+syllog-ir = { path = "../syllog-ir", version = "0.1.0" }
 thiserror.workspace = true
 tracing.workspace = true
+tokio.workspace = true
 wasmtime.workspace = true
 
 [dev-dependencies]

@@ -559,6 +559,13 @@ fn parse_postfix(pair: Pair<'_, Rule>) -> anyhow::Result<Expr> {
 fn parse_primary(pair: Pair<'_, Rule>) -> anyhow::Result<Expr> {
     let span = pair_span(&pair);
     let kind = match pair.as_rule() {
+        Rule::await_expression => {
+            let operand = pair
+                .into_inner()
+                .find(|part| part.as_rule() == Rule::expression)
+                .context("await operand is missing")?;
+            ExprKind::Await(Box::new(parse_expression(operand)?))
+        }
         Rule::string | Rule::boolean | Rule::float | Rule::integer => {
             ExprKind::Literal(parse_literal(&pair)?)
         }

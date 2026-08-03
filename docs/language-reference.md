@@ -114,6 +114,7 @@ expression = LITERAL | path | block | unary | binary | call | field | index
            | return-expr | break-expr | struct-expr | tuple-expr | array-expr ;
 match-expr = "match" expression "{" { pattern [ "if" expression ]
            "=>" expression "," } "}" ;
+await-expr = "await" expression ;
 ```
 
 Semicolons are optional after declarations and block-valued statements, and
@@ -420,6 +421,7 @@ diagnostic behavior follows the compatibility policy in §15.
 | `SYL-SAFETY-REQUIRED-001` | A safety bound contains at least one `require` or `policy` property; omission emits `SYL1002`. |
 | `SYL-RUNTIME-ENTRY-001` | A well-typed executable `main` returns a deterministic `()`/integer process result; incompatible return values emit `SYL2101`. |
 | `SYL-MODULE-SYNTAX-001` | A project source may declare one leading module path followed by imports with optional aliases; malformed declarations emit `SYL0001`. |
+| `SYL-ASYNC-AWAIT-001` | `await` is valid only in an `async fn`; use from a synchronous function emits `SYL2501`. |
 
 ## 15. Diagnostics, profiles, and security
 

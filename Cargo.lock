@@ -975,6 +975,7 @@ dependencies = [
  "syllog-ir",
  "syllog-parser",
  "syllog-semantic",
+ "thiserror",
 ]
 
 [[package]]
@@ -1073,7 +1074,9 @@ name = "syllog-runtime"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "syllog-ir",
  "thiserror",
+ "tokio",
  "tracing",
  "wasmtime",
  "wat",

@@ -303,6 +303,9 @@ impl<'a> Lowerer<'a> {
             .cloned()
             .unwrap_or_else(|| Self::fallback_expression_type(expression, scope));
         let kind = match &expression.kind {
+            ExprKind::Await(operand) => {
+                HirExprKind::Await(Box::new(self.lower_expression(operand, scope)))
+            }
             ExprKind::Literal(Literal::Identifier(name)) if name != "none" => self
                 .resolve_value(name, scope, expression.span)
                 .map_or_else(
@@ -456,6 +459,7 @@ impl<'a> Lowerer<'a> {
         scope: &BTreeMap<String, DefId>,
     ) -> ResolvedType {
         match &expression.kind {
+            ExprKind::Await(operand) => Self::fallback_expression_type(operand, scope),
             ExprKind::Literal(Literal::Identifier(name)) if scope.contains_key(name) => {
                 ResolvedType::Unknown
             }

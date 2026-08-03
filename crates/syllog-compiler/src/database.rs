@@ -431,7 +431,9 @@ fn remap_expression(expression: &mut TypedExpr, target: ModuleId) {
             remap_expression(base, target);
             *field = remap_id(*field, target);
         }
-        HirExprKind::Unary { operand, .. } => remap_expression(operand, target),
+        HirExprKind::Await(operand) | HirExprKind::Unary { operand, .. } => {
+            remap_expression(operand, target);
+        }
         HirExprKind::Binary { left, right, .. } => {
             remap_expression(left, target);
             remap_expression(right, target);

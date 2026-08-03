@@ -215,6 +215,7 @@ impl<'a> FunctionBuilder<'a> {
 
     fn lower_expression(&mut self, expression: &TypedExpr, expected: Option<&MirType>) -> Operand {
         match &expression.kind {
+            HirExprKind::Await(operand) => self.lower_expression(operand, expected),
             HirExprKind::Literal(literal) => self.lower_literal(literal, expression, expected),
             HirExprKind::Reference { definition } => {
                 self.lower_reference(*definition, expression.span)
