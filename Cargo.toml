@@ -4,6 +4,7 @@ members = [
     "crates/syllog-cli",
     "crates/syllog-compiler",
     "crates/syllog-ir",
+    "crates/syllog-interpreter",
     "crates/syllog-parser",
     "crates/syllog-proxy",
     "crates/syllog-runtime",

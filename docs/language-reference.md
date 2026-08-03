@@ -415,6 +415,7 @@ diagnostic behavior follows the compatibility policy in §15.
 | `SYL-PIPELINE-REFERENCE-001` | A pipeline's required `agent` property names a declared agent; invalid references emit `SYL1101`. |
 | `SYL-PIPELINE-CONTRACT-001` | A typed pipeline input and output are compatible with the selected typed agent; failures emit `SYL2201`. |
 | `SYL-SAFETY-REQUIRED-001` | A safety bound contains at least one `require` or `policy` property; omission emits `SYL1002`. |
+| `SYL-RUNTIME-ENTRY-001` | A well-typed executable `main` returns a deterministic `()`/integer process result; incompatible return values emit `SYL2101`. |
 
 ## 15. Diagnostics, profiles, and security
 

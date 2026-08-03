@@ -1,0 +1,3 @@
+fn main() -> U64 {
+    "not an exit code"
+}

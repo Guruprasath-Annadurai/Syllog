@@ -153,6 +153,20 @@
       "rules": ["SYL-SAFETY-REQUIRED-001"],
       "polarity": "negative",
       "expected": { "kind": "diagnostics", "codes": ["SYL1002"] }
+    },
+    {
+      "edition": "2026",
+      "source": "runtime/exit_42.syl",
+      "rules": ["SYL-RUNTIME-ENTRY-001"],
+      "polarity": "positive",
+      "expected": { "kind": "run", "stdout": "", "exit_code": 42 }
+    },
+    {
+      "edition": "2026",
+      "source": "runtime/invalid_main_return.syl",
+      "rules": ["SYL-RUNTIME-ENTRY-001"],
+      "polarity": "negative",
+      "expected": { "kind": "diagnostics", "codes": ["SYL2101"] }
     }
   ]
 }

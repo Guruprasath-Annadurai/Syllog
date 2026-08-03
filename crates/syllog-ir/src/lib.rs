@@ -133,6 +133,8 @@ pub enum Rvalue {
     Aggregate {
         /// Aggregate result type.
         ty: DefId,
+        /// Stable enum tag, or zero for product types.
+        discriminant: u64,
         /// Ordered field values.
         fields: Vec<Operand>,
     },

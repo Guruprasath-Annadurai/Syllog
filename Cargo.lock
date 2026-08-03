@@ -712,6 +712,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "syllog-interpreter"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "syllog-compiler",
+ "syllog-ir",
+ "syllog-parser",
+ "syllog-semantic",
+ "thiserror",
+]
+
+[[package]]
 name = "syllog-ir"
 version = "0.1.0"
 dependencies = [
@@ -767,6 +779,8 @@ dependencies = [
  "serde",
  "serde_json",
  "syllog-compiler",
+ "syllog-interpreter",
+ "syllog-ir",
  "tempfile",
 ]
 

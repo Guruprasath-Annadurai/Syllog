@@ -16,6 +16,8 @@ serde_json.workspace = true
 
 [dev-dependencies]
 syllog-compiler = { path = "../syllog-compiler", version = "0.1.0" }
+syllog-interpreter = { path = "../syllog-interpreter", version = "0.1.0" }
+syllog-ir = { path = "../syllog-ir", version = "0.1.0" }
 tempfile.workspace = true
 
 [lints]

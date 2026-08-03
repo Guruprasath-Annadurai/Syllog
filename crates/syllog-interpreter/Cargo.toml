@@ -1,0 +1,22 @@
+[package]
+name = "syllog-interpreter"
+description = "Deterministic reference interpreter for verified Syllog MIR"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+syllog-ir = { path = "../syllog-ir", version = "0.1.0" }
+thiserror.workspace = true
+
+[dev-dependencies]
+syllog-compiler = { path = "../syllog-compiler", version = "0.1.0" }
+syllog-parser = { path = "../syllog-parser", version = "0.1.0" }
+syllog-semantic = { path = "../syllog-semantic", version = "0.1.0" }
+
+[lints]
+workspace = true

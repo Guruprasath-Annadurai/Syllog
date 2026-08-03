@@ -375,7 +375,7 @@ fn verify_rvalue(
             operand_type(function, block, operand, defined, errors);
             Some(MirType::U64)
         }
-        Rvalue::Aggregate { ty, fields } => {
+        Rvalue::Aggregate { ty, fields, .. } => {
             for field in fields {
                 operand_type(function, block, field, defined, errors);
             }

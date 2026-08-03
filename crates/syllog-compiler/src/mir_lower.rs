@@ -214,86 +214,15 @@ impl<'a> FunctionBuilder<'a> {
         match &expression.kind {
             HirExprKind::Literal(literal) => self.lower_literal(literal, expression, expected),
             HirExprKind::Reference { definition } => {
-                if let Some(local) = self.bindings.get(definition) {
-                    Operand::Copy(*local)
-                } else if let Some((aggregate, _)) = self.index.variants.get(definition) {
-                    let local = self.new_local(MirType::Aggregate(*aggregate));
-                    self.assign(
-                        Place::Local(local),
-                        Rvalue::Aggregate {
-                            ty: *aggregate,
-                            fields: Vec::new(),
-                        },
-                    );
-                    Operand::Move(local)
-                } else {
-                    self.error(expression.span, "value reference is not executable in MIR");
-                    Operand::Constant(Constant::Unit)
-                }
+                self.lower_reference(*definition, expression.span)
             }
             HirExprKind::Binary {
                 operator,
                 left,
                 right,
-            } => {
-                let left = self.lower_expression(left, expected);
-                let operand_type = self.operand_type(&left).or_else(|| expected.cloned());
-                let right = self.lower_expression(right, operand_type.as_ref());
-                let result = if matches!(
-                    operator,
-                    BinaryOperator::Equal
-                        | BinaryOperator::NotEqual
-                        | BinaryOperator::Less
-                        | BinaryOperator::LessEqual
-                        | BinaryOperator::Greater
-                        | BinaryOperator::GreaterEqual
-                ) {
-                    MirType::Bool
-                } else {
-                    operand_type.unwrap_or(MirType::Unit)
-                };
-                let local = self.new_local(result);
-                let Some(operator) = lower_binary(*operator) else {
-                    self.error(
-                        expression.span,
-                        "binary operator is not in the executable subset",
-                    );
-                    return Operand::Constant(Constant::Unit);
-                };
-                self.assign(
-                    Place::Local(local),
-                    Rvalue::Binary {
-                        operator,
-                        left,
-                        right,
-                    },
-                );
-                Operand::Move(local)
-            }
+            } => self.lower_binary_expression(*operator, left, right, expected, expression.span),
             HirExprKind::Call { callee, arguments } => {
-                let HirExprKind::Reference { definition: callee } = callee.kind else {
-                    self.error(expression.span, "only direct function calls are executable");
-                    return Operand::Constant(Constant::Unit);
-                };
-                let args = arguments
-                    .iter()
-                    .map(|argument| self.lower_expression(argument, None))
-                    .collect();
-                let result = expected.cloned().unwrap_or_else(|| {
-                    self.index
-                        .lower_type(&expression.ty)
-                        .unwrap_or(MirType::Unit)
-                });
-                let destination = self.new_local(result);
-                let next = self.new_block();
-                self.terminate(Terminator::Call {
-                    function: mir_def_id(callee),
-                    args,
-                    destination: Place::Local(destination),
-                    next,
-                });
-                self.current = next;
-                Operand::Move(destination)
+                self.lower_call(callee, arguments, expression, expected)
             }
             HirExprKind::Match { value, arms } => {
                 self.lower_match(expression, value, arms, expected)
@@ -311,6 +240,100 @@ impl<'a> FunctionBuilder<'a> {
                 Operand::Constant(Constant::Unit)
             }
         }
+    }
+
+    fn lower_reference(&mut self, definition: DefId, span: Span) -> Operand {
+        if let Some(local) = self.bindings.get(&definition) {
+            Operand::Copy(*local)
+        } else if let Some((aggregate, discriminant)) = self.index.variants.get(&definition) {
+            let aggregate = *aggregate;
+            let discriminant = *discriminant;
+            let local = self.new_local(MirType::Aggregate(aggregate));
+            self.assign(
+                Place::Local(local),
+                Rvalue::Aggregate {
+                    ty: aggregate,
+                    discriminant,
+                    fields: Vec::new(),
+                },
+            );
+            Operand::Move(local)
+        } else {
+            self.error(span, "value reference is not executable in MIR");
+            Operand::Constant(Constant::Unit)
+        }
+    }
+
+    fn lower_binary_expression(
+        &mut self,
+        operator: BinaryOperator,
+        left: &TypedExpr,
+        right: &TypedExpr,
+        expected: Option<&MirType>,
+        span: Span,
+    ) -> Operand {
+        let left = self.lower_expression(left, expected);
+        let operand_type = self.operand_type(&left).or_else(|| expected.cloned());
+        let right = self.lower_expression(right, operand_type.as_ref());
+        let result = if matches!(
+            operator,
+            BinaryOperator::Equal
+                | BinaryOperator::NotEqual
+                | BinaryOperator::Less
+                | BinaryOperator::LessEqual
+                | BinaryOperator::Greater
+                | BinaryOperator::GreaterEqual
+        ) {
+            MirType::Bool
+        } else {
+            operand_type.unwrap_or(MirType::Unit)
+        };
+        let Some(operator) = lower_binary(operator) else {
+            self.error(span, "binary operator is not in the executable subset");
+            return Operand::Constant(Constant::Unit);
+        };
+        let local = self.new_local(result);
+        self.assign(
+            Place::Local(local),
+            Rvalue::Binary {
+                operator,
+                left,
+                right,
+            },
+        );
+        Operand::Move(local)
+    }
+
+    fn lower_call(
+        &mut self,
+        callee: &TypedExpr,
+        arguments: &[TypedExpr],
+        expression: &TypedExpr,
+        expected: Option<&MirType>,
+    ) -> Operand {
+        let HirExprKind::Reference { definition: callee } = callee.kind else {
+            self.error(expression.span, "only direct function calls are executable");
+            return Operand::Constant(Constant::Unit);
+        };
+        let args = arguments
+            .iter()
+            .map(|argument| self.lower_expression(argument, None))
+            .collect();
+        let result = expected.cloned().unwrap_or_else(|| {
+            self.index
+                .lower_type(&expression.ty)
+                .unwrap_or(MirType::Unit)
+        });
+        let destination = self.new_local(result);
+        let next = self.new_block();
+        self.terminate(Terminator::Call {
+            function: mir_def_id(callee),
+            args,
+            destination: Place::Local(destination),
+            next,
+        });
+        self.current = next;
+        Operand::Move(destination)
     }
 
     fn lower_match(

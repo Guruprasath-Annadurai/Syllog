@@ -11,7 +11,7 @@ fn load_cases_preserves_expected_diagnostic_codes() {
         .expect("repository path should resolve");
     let cases = load_cases(&repository.join("spec/cases")).expect("manifest should load");
 
-    assert_eq!(cases.len(), 20);
+    assert_eq!(cases.len(), 22);
     let unknown_value = cases
         .iter()
         .find(|case| case.source.ends_with("semantics/unknown_value.syl"))
@@ -115,10 +115,57 @@ fn compiler_outcomes_are_exact_and_deterministic() {
                 "unexpected diagnostics for {}",
                 case.source.display()
             ),
-            ExpectedOutcome::Run { .. } => panic!(
-                "runtime conformance is unavailable before the reference interpreter: {}",
-                case.source.display()
-            ),
+            ExpectedOutcome::Run { stdout, exit_code } => {
+                assert!(
+                    first.success(),
+                    "{} emitted {first_codes:?}",
+                    case.source.display()
+                );
+                let ast = first
+                    .ast
+                    .as_ref()
+                    .expect("successful compilation retains AST");
+                let symbols = first
+                    .symbols
+                    .as_ref()
+                    .expect("successful compilation retains symbols");
+                let hir = syllog_compiler::lower_to_hir(ast, symbols)
+                    .expect("runtime fixture should lower to HIR");
+                let entry = hir.entry.expect("runtime fixture should declare main");
+                let mir = syllog_compiler::lower_to_mir(&hir)
+                    .expect("runtime fixture should lower to MIR");
+                let result = syllog_interpreter::execute(
+                    &mir,
+                    syllog_ir::DefId {
+                        module: entry.module.0,
+                        index: entry.index,
+                    },
+                    syllog_interpreter::InterpreterLimits::default(),
+                )
+                .expect("runtime fixture should execute");
+                assert_eq!(
+                    result.stdout,
+                    stdout.as_bytes(),
+                    "stdout mismatch for {}",
+                    case.source.display()
+                );
+                let actual_exit = match result.value {
+                    syllog_interpreter::RuntimeValue::Unit => 0,
+                    syllog_interpreter::RuntimeValue::I64(value) => {
+                        i32::try_from(value).expect("conformance exit value should fit i32")
+                    }
+                    syllog_interpreter::RuntimeValue::U64(value) => {
+                        i32::try_from(value).expect("conformance exit value should fit i32")
+                    }
+                    value => panic!("invalid main return value for process exit: {value:?}"),
+                };
+                assert_eq!(
+                    actual_exit,
+                    exit_code,
+                    "exit mismatch for {}",
+                    case.source.display()
+                );
+            }
         }
     }
 }
