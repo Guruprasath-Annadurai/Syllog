@@ -1,0 +1,18 @@
+// The parser milestone intentionally uses a compact declarative subset.
+agent assistant {
+    provider: "openai"
+    model: "gpt-5"
+    context_window: 128000
+    deterministic: true
+}
+
+pipeline answer_request {
+    input: text
+    agent: assistant
+    output: stream
+}
+
+safety_bound output_policy {
+    policy: "Never emit secrets or personal data"
+    enforced: true
+}

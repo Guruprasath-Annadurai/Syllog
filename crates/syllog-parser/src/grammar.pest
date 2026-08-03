@@ -1,0 +1,132 @@
+WHITESPACE = _{ " " | "\t" | NEWLINE }
+COMMENT = _{ line_comment | block_comment }
+line_comment = _{ "//" ~ (!NEWLINE ~ ANY)* ~ (NEWLINE | EOI) }
+block_comment = _{ "/*" ~ (block_comment | !("/*" | "*/") ~ ANY)* ~ "*/" }
+
+program = { SOI ~ item* ~ EOI }
+item = _{
+      struct_decl
+    | enum_decl
+    | function_decl
+    | state_decl
+    | agent_decl
+    | pipeline_decl
+    | safety_bound_decl
+}
+
+visibility = @{ "pub" ~ !ident_continue }
+async_marker = @{ "async" ~ !ident_continue }
+
+struct_decl = { visibility? ~ kw_struct ~ identifier ~ "{" ~ struct_field* ~ "}" }
+struct_field = { visibility? ~ identifier ~ ":" ~ type_expr ~ separator? }
+
+enum_decl = { visibility? ~ kw_enum ~ identifier ~ "{" ~ enum_variant* ~ "}" }
+enum_variant = { identifier ~ ("(" ~ type_list? ~ ")")? ~ separator? }
+
+function_decl = {
+    visibility? ~ async_marker? ~ kw_fn ~ identifier
+    ~ parameters ~ return_type? ~ block
+}
+parameters = { "(" ~ parameter_list? ~ ")" }
+parameter_list = _{ parameter ~ ("," ~ parameter)* ~ ","? }
+parameter = { identifier ~ ":" ~ type_expr }
+return_type = { "->" ~ type_expr }
+
+state_decl = { visibility? ~ kw_state ~ identifier ~ "{" ~ state_field* ~ "}" }
+state_field = { identifier ~ ":" ~ type_expr ~ ("=" ~ expression)? ~ separator? }
+
+agent_decl = { visibility? ~ kw_agent ~ identifier ~ property_block }
+pipeline_decl = {
+    visibility? ~ kw_pipeline ~ identifier
+    ~ parameters? ~ return_type? ~ property_block
+}
+safety_bound_decl = {
+    visibility? ~ kw_safety_bound ~ identifier
+    ~ parameters? ~ property_block
+}
+property_block = { "{" ~ property* ~ "}" }
+property = { identifier ~ ":" ~ (typed_property | expression) ~ separator? }
+typed_property = { type_expr ~ "=" ~ expression }
+
+type_expr = { array_type | tuple_type | path_type }
+array_type = { "[" ~ type_expr ~ "]" }
+tuple_type = { "(" ~ type_list? ~ ")" }
+type_list = _{ type_expr ~ ("," ~ type_expr)* ~ ","? }
+path_type = { path ~ generic_arguments? }
+generic_arguments = { "<" ~ type_list ~ ">" }
+
+block = { "{" ~ statement* ~ "}" }
+statement = _{ let_statement | return_statement | expression_statement }
+let_statement = { kw_let ~ identifier ~ (":" ~ type_expr)? ~ "=" ~ expression ~ separator? }
+return_statement = { kw_return ~ expression? ~ separator? }
+expression_statement = { expression ~ separator? }
+
+expression = { prefix_operator* ~ postfix_expression ~ (infix_operator ~ prefix_operator* ~ postfix_expression)* }
+postfix_expression = { primary ~ postfix_suffix* }
+postfix_suffix = _{ call_suffix | field_suffix }
+call_suffix = { "(" ~ argument_list? ~ ")" }
+argument_list = _{ call_argument ~ ("," ~ call_argument)* ~ ","? }
+call_argument = { named_argument | expression }
+named_argument = { identifier ~ ":" ~ expression }
+field_suffix = { "." ~ identifier }
+
+primary = _{ match_expression | array_expression | literal | path_expression | parenthesized | block }
+parenthesized = { "(" ~ expression ~ ")" }
+array_expression = { "[" ~ (expression ~ ("," ~ expression)* ~ ","?)? ~ "]" }
+path_expression = { path }
+
+match_expression = { kw_match ~ expression ~ "{" ~ match_arm* ~ "}" }
+match_arm = { pattern ~ match_guard? ~ "=>" ~ expression ~ separator? }
+match_guard = { kw_if ~ expression }
+pattern = { wildcard_pattern | constructor_pattern | literal_pattern | path_pattern }
+wildcard_pattern = { "_" ~ !ident_continue }
+constructor_pattern = { path ~ "(" ~ (pattern ~ ("," ~ pattern)* ~ ","?)? ~ ")" }
+literal_pattern = { literal }
+path_pattern = { path }
+
+infix_operator = _{
+      op_or | op_and | op_equal | op_not_equal
+    | op_less_equal | op_greater_equal | op_less | op_greater
+    | op_add | op_subtract | op_multiply | op_divide | op_remainder
+}
+op_or = { "||" }
+op_and = { "&&" }
+op_equal = { "==" }
+op_not_equal = { "!=" }
+op_less_equal = { "<=" }
+op_greater_equal = { ">=" }
+op_less = { "<" }
+op_greater = { ">" }
+op_add = { "+" }
+op_subtract = { "-" }
+op_multiply = { "*" }
+op_divide = { "/" }
+op_remainder = { "%" }
+prefix_operator = { op_not | op_negate }
+op_not = { "!" }
+op_negate = { "-" }
+
+literal = _{ string | boolean | float | integer }
+boolean = @{ ("true" | "false") ~ !ident_continue }
+float = @{ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+integer = @{ ASCII_DIGIT+ }
+string = @{ "\"" ~ (escape | !("\"" | "\\" | NEWLINE) ~ ANY)* ~ "\"" }
+escape = _{ "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t" | ("u" ~ ASCII_HEX_DIGIT{4})) }
+
+path = { identifier ~ ("::" ~ identifier)* }
+identifier = @{ ident_start ~ ident_continue* }
+ident_start = _{ ASCII_ALPHA | "_" }
+ident_continue = _{ ASCII_ALPHANUMERIC | "_" }
+separator = _{ "," | ";" }
+
+kw_struct = @{ "struct" ~ !ident_continue }
+kw_enum = @{ "enum" ~ !ident_continue }
+kw_fn = @{ "fn" ~ !ident_continue }
+kw_state = @{ "state" ~ !ident_continue }
+kw_agent = @{ "agent" ~ !ident_continue }
+kw_pipeline = @{ "pipeline" ~ !ident_continue }
+kw_safety_bound = @{ "safety_bound" ~ !ident_continue }
+kw_let = @{ "let" ~ !ident_continue }
+kw_return = @{ "return" ~ !ident_continue }
+kw_match = @{ "match" ~ !ident_continue }
+kw_if = @{ "if" ~ !ident_continue }

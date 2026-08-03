@@ -1,0 +1,26 @@
+[package]
+name = "syllog-cli"
+description = "Command-line interface for Syllog"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "syllog"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+serde_json.workspace = true
+syllog-compiler = { path = "../syllog-compiler" }
+syllog-parser = { path = "../syllog-parser" }
+syllog-runtime = { path = "../syllog-runtime" }
+syllog-semantic = { path = "../syllog-semantic" }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

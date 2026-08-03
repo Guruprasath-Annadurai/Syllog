@@ -1,0 +1,129 @@
+module com.acme.cognition_optimizer
+
+use ai.interpret.{AttentionTensor, ProbeFrame}
+use crypto.zk.{Groth16Proof, VerificationKey}
+use evo.{CandidateModule, ModuleSlot}
+use metrics.Score
+use time.Duration
+
+pub struct EvalMetrics {
+    task_score: Score,
+    safety_score: Score,
+    latency_p99_ms: U64,
+    peak_memory_bytes: U64,
+}
+
+probe attention_guard on cognitive_model.layers[20..32].attention.output {
+    sample: every(16 tokens)
+    capture: AttentionTensor<F16, shape=[heads, sequence, sequence]>
+    retain: ring(capacity: 64, storage: .locked_memory)
+    redact: token_identity
+
+    fn evaluate(frame: &ProbeFrame<AttentionTensor<F16>>) -> ProbeVerdict {
+        let concentration = frame.tensor.diagonal_mass()
+        let anomaly = frame.tensor.robust_zscore(reference: "attention-baseline-v7")
+        if concentration > 0.94 || anomaly > 5.0 {
+            .halt(reason: "attention distribution outside certified envelope")
+        } else {
+            .continue
+        }
+    }
+}
+
+safety_bound certified_candidate(candidate: &CandidateModule, metrics: &EvalMetrics) {
+    require candidate.imports().subset_of({
+        "syllog:math",
+        "syllog:bounded-memory",
+        "syllog:deterministic-clock",
+    })
+    require candidate.max_memory_pages() <= 1024
+    require candidate.table_elements() <= 256
+    require candidate.has_no_threads()
+    require candidate.has_no_network()
+    require metrics.safety_score >= Score.percent(99.999)
+    require metrics.latency_p99_ms <= 250
+    require attention_guard.last_verdict() == .continue
+
+    zk_verify Groth16 {
+        verification_key: VerificationKey.load_embedded("keys/evo-safety-v3.vk")
+        proof: Groth16Proof.decode(candidate.section("syllog.safety-proof"))?
+        public_inputs: [
+            candidate.sha256().as_field_elements(),
+            metrics.safety_score.as_field(),
+            candidate.policy_hash().as_field_elements(),
+        ].flatten()
+    }
+}
+
+evo optimizer_patch: ModuleSlot<Optimizer> {
+    target: wasm32-wasi-preview2
+    compiler: cranelift(opt_level: .speed_and_size, canonicalize_nans: true)
+    capabilities: { math, bounded_memory, deterministic_clock }
+    memory: 64MiB
+    fuel: 50000000
+    epoch_deadline: 200ms
+    activation: atomic_generation
+    rollback: retain(3 generations)
+
+    fn migrate(previous: &OptimizerState) -> Result<OptimizerState, MigrationError> {
+        OptimizerState.validate_and_clone(previous)
+    }
+
+    health_check: fn(candidate: &Optimizer) -> Bool {
+        candidate.self_test(seed: 42017) == .passed
+    }
+}
+
+asi_loop improve_reasoning {
+    state checkpoint: OptimizerState = OptimizerState.load("optimizer-v12")?
+    objective: maximize EvalMetrics.task_score
+    cadence: Duration.minutes(10)
+    determinism: strict(seed: 42017, clock: .logical)
+    budget: {
+        iterations: 1000
+        wall_time: 24h
+        compute: 500 gpu_seconds per iteration
+        candidates: 8 per iteration
+    }
+    stop_when: moving_average(task_score, window: 20).improvement() < Score.basis_points(1)
+
+    iteration index {
+        let baseline = optimizer_patch.active().evaluate(
+            suite: "reasoning-heldout-v9",
+            seed: 42017 + index
+        )?
+
+        let candidates = optimizer_patch.active().mutate(
+            state: &checkpoint,
+            count: 8,
+            mutation_budget: 4096 bytes,
+            seed: 42017 + index
+        )?
+
+        for candidate in candidates parallel(limit: 4) {
+            let module = candidate.compile_wasm()?
+            let metrics = module.evaluate_isolated(
+                suite: "reasoning-heldout-v9",
+                timeout: 5m,
+                probe: attention_guard
+            )?
+
+            safety_bound certified_candidate(&module, &metrics)
+
+            if metrics.task_score > baseline.task_score
+                && metrics.safety_score >= baseline.safety_score
+                && metrics.peak_memory_bytes <= 67108864 {
+                optimizer_patch.stage(module, migrate: &checkpoint)?
+                optimizer_patch.promote(
+                    drain_deadline: 2s,
+                    health_window: 60s,
+                    rollback_on: { trap, bound_violation, health_failure }
+                )?
+                checkpoint = optimizer_patch.active().snapshot()
+                commit metrics
+            } else {
+                reject candidate reason "candidate did not dominate baseline"
+            }
+        }
+    }
+}

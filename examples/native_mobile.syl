@@ -1,0 +1,102 @@
+module com.acme.profile
+
+use native.http
+use native.ui
+use native.time.Duration
+
+pub struct Profile {
+    id: Uuid,
+    display_name: String,
+    avatar_url: Option<Url>,
+}
+
+pub enum LoadState {
+    idle,
+    loading,
+    loaded(Profile),
+    failed(HttpError),
+}
+
+state ProfileStore {
+    phase: LoadState = .idle,
+    request: Option<Task<Result<Profile, HttpError>>> = None,
+}
+
+impl ProfileStore {
+    pub async fn refresh(&mut self, user_id: Uuid, client: &HttpClient) -> Result<(), HttpError> {
+        self.request.take().map(Task.cancel)
+        self.phase = .loading
+
+        let task = async move {
+            let response = await client
+                .get(Url.parse("https://api.acme.example/v1/users/")?.join(user_id.to_string())?)
+                .header("Accept", "application/json")
+                .timeout(Duration.seconds(8))
+                .send()?
+            response.require_status(200)?
+            response.json::<Profile>()
+        }.spawn(on: .io)
+
+        self.request = Some(task)
+        match await self.request.take().unwrap() {
+            Ok(profile) => {
+                self.phase = .loaded(profile)
+                Ok(())
+            }
+            Err(error) => {
+                self.phase = .failed(error.clone())
+                Err(error)
+            }
+        }
+    }
+}
+
+pub component ProfileScreen(user_id: Uuid) {
+    state store = ProfileStore {
+        phase: .idle,
+        request: None,
+    }
+    let client = HttpClient.shared()
+
+    view {
+        NativeStack(axis: .vertical, spacing: 16) {
+            match &store.phase {
+                .idle => NativeText("Ready"),
+                .loading => NativeProgress(accessibility_label: "Loading profile"),
+                .loaded(profile) => NativeStack(axis: .vertical, spacing: 8) {
+                    NativeAsyncImage(
+                        url: profile.avatar_url.as_ref(),
+                        placeholder: NativeIcon("person.crop.circle")
+                    )
+                    NativeText(profile.display_name.as_str())
+                },
+                .failed(error) => NativeStack(axis: .vertical, spacing: 8) {
+                    NativeText(error.user_message())
+                    NativeButton("Retry", on_press: async || {
+                        let _ = await store.refresh(user_id, &client)
+                    })
+                },
+            }
+        }
+        .padding(20)
+        .navigation_title("Profile")
+    }
+
+    on mount async {
+        let _ = await store.refresh(user_id, &client)
+    }
+
+    on unmount {
+        store.request.take().map(Task.cancel)
+    }
+}
+
+extern "swift" zero_copy {
+    pub fn install_profile(root: swift.Borrowed<UIViewController>, user_id: Uuid)
+        -> Result<(), NativeError>
+}
+
+extern "kotlin" zero_copy {
+    pub fn install_profile(root: kotlin.Borrowed<Activity>, user_id: Uuid)
+        -> Result<(), NativeError>
+}

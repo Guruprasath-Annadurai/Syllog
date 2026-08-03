@@ -1,0 +1,119 @@
+module com.acme.support_ai
+
+use ai.context.{ContextCache, CacheKey}
+use ai.stream.{Token, TokenStream}
+use observability.{metric, trace}
+use time.Duration
+
+agent classifier {
+    provider: openai(api_key: secret("OPENAI_API_KEY"))
+    model: "gpt-5-mini"
+    context_window: 32768
+    system: "Classify the request as billing, technical, security, or general. Return JSON only."
+    output: Classification
+    temperature: 0.0
+    seed: 42017
+    timeout: 4s
+    max_output_tokens: 128
+}
+
+agent resolver {
+    provider: openai(api_key: secret("OPENAI_API_KEY"))
+    model: "gpt-5"
+    context_window: 128000
+    system: "Resolve the support request using only supplied evidence; cite evidence identifiers."
+    output: TokenStream
+    temperature: 0.1
+    seed: 42017
+    timeout: 30s
+    max_output_tokens: 4096
+    fallback: [
+        anthropic(model: "claude-sonnet-4-5", api_key: secret("ANTHROPIC_API_KEY")),
+        local(model: "acme-support-32b", endpoint: env("LOCAL_MODEL_URL")),
+    ]
+    circuit_breaker: {
+        failures: 5
+        window: 30s
+        cool_down: 45s
+        half_open_requests: 2
+    }
+}
+
+agent verifier {
+    provider: local(model: "acme-grounding-8b", endpoint: env("LOCAL_MODEL_URL"))
+    context_window: 32768
+    system: "Reject unsupported claims and unsafe operational instructions."
+    output: Verification
+    temperature: 0.0
+    seed: 42017
+    timeout: 6s
+}
+
+pub struct SupportRequest {
+    tenant: TenantId,
+    conversation: ConversationId,
+    text: String,
+}
+
+pub struct Classification {
+    category: String,
+    confidence: F32,
+}
+
+pub struct Verification {
+    accepted: Bool,
+    reason: Option<String>,
+}
+
+pipeline answer_support(request: SupportRequest) -> Result<TokenStream, WorkflowError> {
+    capacity: 256 tokens
+    backpressure: block
+    cancellation: propagate
+
+    let cache_key = CacheKey.hash((request.tenant, request.conversation))
+    let context = await ContextCache.shared().get_or_load(
+        cache_key,
+        ttl: Duration.minutes(20),
+        loader: async || knowledge.retrieve(
+            tenant: request.tenant,
+            query: request.text.as_str(),
+            limit: 12
+        )
+    )?
+
+    let class = await classifier.call({ text: request.text.as_str() })?
+
+    let draft = resolver.stream({
+        request: request.text.as_str(),
+        category: class.category,
+        evidence: context.borrow(),
+    })
+
+    let (for_client, for_audit) = draft.tee(capacity: 256)
+    let audit = async move {
+        let materialized = await for_audit.collect(max_bytes: 262144)?
+        verifier.call({ response: materialized, evidence: context.borrow() }).await
+    }.spawn(on: .ai)
+
+    stream token in for_client {
+        emit token
+    }
+
+    match await audit? {
+        Verification { accepted: true, reason: _ } => {
+            metric.increment("support.answer.accepted", labels: { category: class.category })
+            Ok(stream.end())
+        }
+        Verification { accepted: false, reason } => {
+            trace.error("answer rejected", fields: { reason: reason.unwrap_or("unspecified") })
+            Err(.verification_failed)
+        }
+    }
+}
+
+mesh support_mesh {
+    ingress request: Stream<SupportRequest>
+    route request -> answer_support partition by request.tenant parallelism 64
+    egress answer_support -> response: Stream<Token>
+    supervise: restart(exponential(min: 100ms, max: 10s), attempts: 8)
+}

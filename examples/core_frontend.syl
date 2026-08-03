@@ -1,0 +1,37 @@
+pub struct User {
+    id: U64,
+    tags: [String],
+}
+
+enum Outcome {
+    ok(User),
+    missing,
+}
+
+state Store {
+    users: [User] = []
+    selected: Option<User> = none
+}
+
+async fn resolve(input: String) -> Outcome {
+    let candidates = [input]
+    match candidates {
+        _ => Outcome::missing,
+    }
+}
+
+agent router {
+    provider: Provider = openai(model: "gpt-5")
+    context_window: U64 = 128000
+    deterministic: Bool = true
+    fallback: [Provider] = [local(model: "backup")]
+}
+
+pipeline answer(input: String) -> Outcome {
+    agent: AgentRef = router
+    result: Outcome = resolve(input)
+}
+
+safety_bound accepted(candidate: Outcome) {
+    require: Bool = true
+}

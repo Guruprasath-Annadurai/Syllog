@@ -1,0 +1,38 @@
+struct Failure {
+    code: U64,
+}
+
+enum Decision {
+    approve,
+    deny(Failure),
+}
+
+fn decide(input: String) -> Decision {
+    Decision::approve
+}
+
+fn option_text(value: Option<String>) -> String {
+    match value {
+        Option::some(text) => text,
+        Option::none => "none",
+    }
+}
+
+fn result_text(value: Result<String, Failure>) -> String {
+    match value {
+        Result::ok(text) => text,
+        Result::err(_) => "error",
+    }
+}
+
+agent decision_agent {
+    provider: openai(model: "gpt-5")
+    context_window: 128000
+    input: String = request
+    output: Decision = response
+}
+
+pipeline decide_request(input: String) -> Decision {
+    agent: AgentRef = decision_agent
+    result: Decision = decide(input)
+}

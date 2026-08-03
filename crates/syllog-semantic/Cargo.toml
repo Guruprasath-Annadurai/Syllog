@@ -1,0 +1,16 @@
+[package]
+name = "syllog-semantic"
+description = "Name resolution and static semantic analysis for Syllog"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+syllog-parser = { path = "../syllog-parser" }
+
+[lints]
+workspace = true
