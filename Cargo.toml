@@ -4,6 +4,7 @@ members = [
     "crates/syllog-cli",
     "crates/syllog-codegen-wasm",
     "crates/syllog-compiler",
+    "crates/syllog-dev-server",
     "crates/syllog-ir",
     "crates/syllog-interpreter",
     "crates/syllog-parser",
@@ -32,7 +33,7 @@ sha2 = "0.10"
 thiserror = "2.0"
 tempfile = "3.23"
 toml = "0.9"
-tokio = { version = "1.47", features = ["macros", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1.47", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 wasmtime = { version = "36.0", default-features = false, features = ["cranelift", "runtime"] }

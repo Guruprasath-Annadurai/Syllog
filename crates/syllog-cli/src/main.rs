@@ -37,16 +37,32 @@ fn execute(mut args: impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
         "check" => execute_check(&mut args),
         "build" => execute_build(&mut args),
         "run" => execute_run(&mut args),
+        "dev" => execute_dev(&mut args),
         "schema" => execute_schema(&mut args),
         "new" => execute_new(&mut args),
         "help" | "--help" | "-h" => {
             println!(
-                "Syllog compiler\n\nUSAGE:\n    syllog new NAME [--template basic|agent|native]\n    syllog check <file.syl> [--json|--diagnostic-format=json]\n    syllog build <file.syl> --target wasm32-syllog --output PATH\n    syllog run <file.syl> [--fuel N] [--memory-bytes N]\n    syllog schema manifest"
+                "Syllog compiler\n\nUSAGE:\n    syllog new NAME [--template basic|agent|native]\n    syllog check <file.syl> [--json|--diagnostic-format=json]\n    syllog dev [--json-events] [--once]\n    syllog build <file.syl> --target wasm32-syllog --output PATH\n    syllog run <file.syl> [--fuel N] [--memory-bytes N]\n    syllog schema manifest"
             );
             Ok(ExitCode::SUCCESS)
         }
-        other => bail!("unknown command '{other}'; expected new, check, build, run, or schema"),
+        other => {
+            bail!("unknown command '{other}'; expected new, check, dev, build, run, or schema")
+        }
     }
+}
+
+fn execute_dev(args: &mut impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
+    let mut json_events = false;
+    let mut once = false;
+    for argument in args {
+        match argument.as_str() {
+            "--json-events" => json_events = true,
+            "--once" => once = true,
+            _ => bail!("unknown dev option '{argument}'"),
+        }
+    }
+    commands::dev::execute(&env::current_dir()?, json_events, once)
 }
 
 fn execute_check(args: &mut impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {

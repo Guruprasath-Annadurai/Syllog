@@ -1,0 +1,23 @@
+[package]
+name = "syllog-dev-server"
+description = "Incremental development loop for Syllog projects"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+sha2.workspace = true
+syllog-compiler = { path = "../syllog-compiler", version = "0.1.0" }
+syllog-project = { path = "../syllog-project", version = "0.1.0" }
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
