@@ -68,6 +68,15 @@ pub enum ResolvedType {
     FloatLiteral,
 }
 
+/// The resolved type assigned to one source expression.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExpressionType {
+    /// Expression source range.
+    pub span: Span,
+    /// Type after inference and compatibility checking.
+    pub ty: ResolvedType,
+}
+
 impl std::fmt::Display for ResolvedType {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

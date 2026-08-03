@@ -19,6 +19,8 @@ pub struct Analysis {
     pub symbols: SymbolTable,
     /// Source-positioned semantic errors.
     pub diagnostics: Vec<Diagnostic>,
+    /// Resolved executable expression types in source order.
+    pub expression_types: Vec<ExpressionType>,
 }
 
 #[derive(Debug, Clone)]
@@ -48,6 +50,7 @@ struct Analyzer<'a> {
     ast: &'a Ast,
     symbols: SymbolTable,
     diagnostics: Vec<Diagnostic>,
+    expression_types: BTreeMap<Span, ResolvedType>,
     structs: HashMap<String, StructDefinition>,
     enums: HashMap<String, EnumDefinition>,
     functions: HashMap<String, FunctionSignature>,
@@ -65,6 +68,11 @@ pub fn analyze(file: &str, ast: &Ast) -> Analysis {
     Analysis {
         symbols: analyzer.symbols,
         diagnostics: analyzer.diagnostics,
+        expression_types: analyzer
+            .expression_types
+            .into_iter()
+            .map(|(span, ty)| ExpressionType { span, ty })
+            .collect(),
     }
 }
 
@@ -107,6 +115,7 @@ impl<'a> Analyzer<'a> {
             ast,
             symbols,
             diagnostics: Vec::new(),
+            expression_types: BTreeMap::new(),
             structs: HashMap::new(),
             enums: HashMap::new(),
             functions: HashMap::new(),
@@ -524,6 +533,18 @@ impl<'a> Analyzer<'a> {
     }
 
     fn infer_expr(
+        &mut self,
+        expression: &Expr,
+        scope: &mut HashMap<String, ResolvedType>,
+        expected: Option<&ResolvedType>,
+    ) -> ResolvedType {
+        let inferred = self.infer_expr_kind(expression, scope, expected);
+        self.expression_types
+            .insert(expression.span, inferred.clone());
+        inferred
+    }
+
+    fn infer_expr_kind(
         &mut self,
         expression: &Expr,
         scope: &mut HashMap<String, ResolvedType>,

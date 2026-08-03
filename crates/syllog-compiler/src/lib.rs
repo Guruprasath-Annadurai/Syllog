@@ -1,5 +1,10 @@
 //! Syllog compilation orchestration and diagnostic presentation.
 
+pub mod hir;
+mod lower;
+
+pub use lower::lower_to_hir;
+
 use serde::{Deserialize, Serialize};
 use std::fmt::Write as _;
 use std::ops::Deref;

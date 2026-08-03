@@ -3,7 +3,9 @@
 use serde::{Deserialize, Serialize};
 
 /// A half-open UTF-8 byte range and its one-based source coordinates.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct Span {
     /// Inclusive byte offset.
     pub start: usize,
