@@ -172,6 +172,8 @@ pub enum HirStatement {
         definition: DefId,
         /// Debug name.
         name: String,
+        /// Resolved binding type.
+        ty: ResolvedType,
         /// Resolved initializer.
         value: TypedExpr,
     },

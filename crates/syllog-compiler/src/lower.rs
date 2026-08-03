@@ -261,13 +261,17 @@ impl<'a> Lowerer<'a> {
             .statements
             .iter()
             .map(|statement| match &statement.kind {
-                StatementKind::Let { name, value, .. } => {
+                StatementKind::Let { name, ty, value } => {
                     let value = self.lower_expression(value, scope);
+                    let ty = ty
+                        .as_ref()
+                        .map_or_else(|| value.ty.clone(), |ty| self.lower_type(ty));
                     let definition = self.allocate();
                     scope.insert(name.clone(), definition);
                     HirStatement::Let {
                         definition,
                         name: name.clone(),
+                        ty,
                         value,
                     }
                 }

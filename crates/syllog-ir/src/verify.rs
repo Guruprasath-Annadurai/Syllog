@@ -371,6 +371,10 @@ fn verify_rvalue(
 ) -> Option<MirType> {
     match value {
         Rvalue::Use(operand) => operand_type(function, block, operand, defined, errors),
+        Rvalue::Discriminant(operand) => {
+            operand_type(function, block, operand, defined, errors);
+            Some(MirType::U64)
+        }
         Rvalue::Aggregate { ty, fields } => {
             for field in fields {
                 operand_type(function, block, field, defined, errors);

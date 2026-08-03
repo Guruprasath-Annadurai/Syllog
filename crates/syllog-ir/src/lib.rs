@@ -136,6 +136,8 @@ pub enum Rvalue {
         /// Ordered field values.
         fields: Vec<Operand>,
     },
+    /// Reads the stable numeric tag of an aggregate value.
+    Discriminant(Operand),
 }
 
 /// Side-effecting instruction within a basic block.
