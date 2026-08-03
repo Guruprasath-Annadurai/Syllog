@@ -21,6 +21,7 @@ crates/syllog-parser   Pest grammar, AST, and `parse_syl`
 crates/syllog-semantic symbol tables, type resolution, and static checks
 crates/syllog-proxy    asynchronous model route/circuit-breaker primitives
 crates/syllog-runtime  policy-enforced Wasmtime execution foundation
+crates/syllog-spec-tests executable governance and language contracts
 examples/              bootstrap and v1 conformance-design programs
 docs/                  language reference, design notes, and grammar
 ```
