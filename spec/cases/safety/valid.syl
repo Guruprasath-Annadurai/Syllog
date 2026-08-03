@@ -1,0 +1,3 @@
+safety_bound output_policy {
+    policy: "No secrets"
+}

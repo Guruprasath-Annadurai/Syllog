@@ -29,8 +29,22 @@ pub struct ConformanceCase {
     pub edition: String,
     /// Normalized absolute source path.
     pub source: PathBuf,
+    /// Normative rule identifiers exercised by this source.
+    pub rules: Vec<String>,
+    /// Whether this case demonstrates acceptance or mandatory rejection.
+    pub polarity: CasePolarity,
     /// Required compiler or runtime outcome.
     pub expected: ExpectedOutcome,
+}
+
+/// The acceptance direction covered by a conformance fixture.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CasePolarity {
+    /// A valid program accepted by the implementation.
+    Positive,
+    /// An invalid program rejected with stable diagnostics.
+    Negative,
 }
 
 /// Observable result required by a conformance case.
@@ -59,6 +73,8 @@ struct Manifest {
 struct ManifestCase {
     edition: String,
     source: PathBuf,
+    rules: Vec<String>,
+    polarity: CasePolarity,
     expected: ManifestOutcome,
 }
 
@@ -96,49 +112,7 @@ pub fn load_cases(root: &Path) -> anyhow::Result<Vec<ConformanceCase>> {
     let mut identities = BTreeSet::new();
     let mut cases = Vec::with_capacity(manifest.cases.len());
     for case in manifest.cases {
-        if case.edition.trim().is_empty() {
-            bail!("conformance case edition cannot be empty");
-        }
-        if case.source.is_absolute()
-            || case
-                .source
-                .components()
-                .any(|component| !matches!(component, std::path::Component::Normal(_)))
-            || case
-                .source
-                .extension()
-                .is_none_or(|extension| extension != "syl")
-        {
-            bail!("unsafe conformance source path {}", case.source.display());
-        }
-        let source = root.join(&case.source);
-        if !source.is_file() {
-            bail!("conformance source does not exist: {}", source.display());
-        }
-        if !identities.insert((case.edition.clone(), source.clone())) {
-            bail!(
-                "duplicate conformance case for edition {} and {}",
-                case.edition,
-                source.display()
-            );
-        }
-        let expected = match case.expected {
-            ManifestOutcome::Pass => ExpectedOutcome::Pass,
-            ManifestOutcome::Diagnostics { codes } => {
-                if codes.is_empty() || codes.iter().any(|code| code.trim().is_empty()) {
-                    bail!("diagnostic conformance cases require non-empty codes");
-                }
-                ExpectedOutcome::Diagnostics(codes)
-            }
-            ManifestOutcome::Run { stdout, exit_code } => {
-                ExpectedOutcome::Run { stdout, exit_code }
-            }
-        };
-        cases.push(ConformanceCase {
-            edition: case.edition,
-            source,
-            expected,
-        });
+        cases.push(load_case(&root, case, &mut identities)?);
     }
     cases.sort_by(|left, right| {
         left.source
@@ -146,6 +120,202 @@ pub fn load_cases(root: &Path) -> anyhow::Result<Vec<ConformanceCase>> {
             .then_with(|| left.edition.cmp(&right.edition))
     });
     Ok(cases)
+}
+
+fn load_case(
+    root: &Path,
+    case: ManifestCase,
+    identities: &mut BTreeSet<(String, PathBuf)>,
+) -> anyhow::Result<ConformanceCase> {
+    if case.edition.trim().is_empty() {
+        bail!("conformance case edition cannot be empty");
+    }
+    if case.source.is_absolute()
+        || case
+            .source
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+        || case
+            .source
+            .extension()
+            .is_none_or(|extension| extension != "syl")
+    {
+        bail!("unsafe conformance source path {}", case.source.display());
+    }
+    let source = root.join(&case.source);
+    if !source.is_file() {
+        bail!("conformance source does not exist: {}", source.display());
+    }
+    if !identities.insert((case.edition.clone(), source.clone())) {
+        bail!(
+            "duplicate conformance case for edition {} and {}",
+            case.edition,
+            source.display()
+        );
+    }
+    validate_case_rules(&source, &case.rules)?;
+    let expected = load_expected(case.expected)?;
+    validate_polarity(&source, case.polarity, &expected)?;
+    Ok(ConformanceCase {
+        edition: case.edition,
+        source,
+        rules: case.rules,
+        polarity: case.polarity,
+        expected,
+    })
+}
+
+fn validate_case_rules(source: &Path, rules: &[String]) -> anyhow::Result<()> {
+    if rules.is_empty() {
+        bail!(
+            "conformance case {} must name at least one rule",
+            source.display()
+        );
+    }
+    let mut unique_rules = BTreeSet::new();
+    for rule in rules {
+        if !valid_rule_id(rule) {
+            bail!("invalid normative rule identifier '{rule}'");
+        }
+        if !unique_rules.insert(rule) {
+            bail!(
+                "duplicate normative rule identifier '{rule}' in {}",
+                source.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+fn load_expected(expected: ManifestOutcome) -> anyhow::Result<ExpectedOutcome> {
+    Ok(match expected {
+        ManifestOutcome::Pass => ExpectedOutcome::Pass,
+        ManifestOutcome::Diagnostics { codes } => {
+            if codes.is_empty() || codes.iter().any(|code| code.trim().is_empty()) {
+                bail!("diagnostic conformance cases require non-empty codes");
+            }
+            ExpectedOutcome::Diagnostics(codes)
+        }
+        ManifestOutcome::Run { stdout, exit_code } => ExpectedOutcome::Run { stdout, exit_code },
+    })
+}
+
+fn validate_polarity(
+    source: &Path,
+    polarity: CasePolarity,
+    expected: &ExpectedOutcome,
+) -> anyhow::Result<()> {
+    match (polarity, expected) {
+        (CasePolarity::Positive, ExpectedOutcome::Diagnostics(_)) => {
+            bail!(
+                "positive conformance case {} cannot expect diagnostics",
+                source.display()
+            );
+        }
+        (CasePolarity::Negative, ExpectedOutcome::Pass | ExpectedOutcome::Run { .. }) => {
+            bail!(
+                "negative conformance case {} must expect diagnostics",
+                source.display()
+            );
+        }
+        _ => Ok(()),
+    }
+}
+
+/// A normative rule that lacks executable acceptance or rejection coverage.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuleCoverageGap {
+    /// Stable identifier from the language reference.
+    pub rule_id: String,
+    /// No positive fixture names this rule.
+    pub missing_positive: bool,
+    /// No negative fixture names this rule.
+    pub missing_negative: bool,
+}
+
+/// Loads stable normative rule identifiers from the implemented-rule table in
+/// the language reference. Rule identifiers use the `SYL-AREA-NAME-NNN` form.
+///
+/// # Errors
+///
+/// Returns an error when the document is unreadable, contains a duplicate or
+/// malformed identifier, or defines no executable normative rules.
+pub fn load_normative_rule_ids(path: &Path) -> anyhow::Result<Vec<String>> {
+    let contents = fs::read_to_string(path)
+        .with_context(|| format!("could not read language reference {}", path.display()))?;
+    let mut rules = BTreeSet::new();
+    for line in contents.lines() {
+        let Some(start) = line.find("`SYL-") else {
+            continue;
+        };
+        let identifier = &line[start + 1..];
+        let Some(end) = identifier.find('`') else {
+            bail!(
+                "unterminated normative rule identifier in {}",
+                path.display()
+            );
+        };
+        let identifier = &identifier[..end];
+        if !valid_rule_id(identifier) {
+            bail!("invalid normative rule identifier '{identifier}'");
+        }
+        if !rules.insert(identifier.to_owned()) {
+            bail!("duplicate normative rule identifier '{identifier}'");
+        }
+    }
+    if rules.is_empty() {
+        bail!("language reference defines no executable normative rule identifiers");
+    }
+    Ok(rules.into_iter().collect())
+}
+
+/// Reports missing positive and negative fixture coverage for every normative
+/// rule. References to identifiers absent from the language reference are also
+/// returned as gaps so stale manifests cannot silently pass.
+#[must_use]
+pub fn validate_rule_coverage(
+    normative_rules: &[String],
+    cases: &[ConformanceCase],
+) -> Vec<RuleCoverageGap> {
+    let normative: BTreeSet<_> = normative_rules.iter().cloned().collect();
+    let mut positive = BTreeSet::new();
+    let mut negative = BTreeSet::new();
+    for case in cases {
+        let destination = match case.polarity {
+            CasePolarity::Positive => &mut positive,
+            CasePolarity::Negative => &mut negative,
+        };
+        destination.extend(case.rules.iter().cloned());
+    }
+
+    let referenced: BTreeSet<_> = positive.union(&negative).cloned().collect();
+    normative
+        .union(&referenced)
+        .filter_map(|rule_id| {
+            let missing_positive = !positive.contains(rule_id);
+            let missing_negative = !negative.contains(rule_id);
+            if !normative.contains(rule_id) || missing_positive || missing_negative {
+                Some(RuleCoverageGap {
+                    rule_id: rule_id.clone(),
+                    missing_positive,
+                    missing_negative,
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn valid_rule_id(identifier: &str) -> bool {
+    identifier.starts_with("SYL-")
+        && identifier.len() >= "SYL-A-B-000".len()
+        && identifier.chars().all(|character| {
+            character.is_ascii_uppercase() || character.is_ascii_digit() || character == '-'
+        })
+        && identifier.rsplit('-').next().is_some_and(|suffix| {
+            suffix.len() == 3 && suffix.chars().all(|digit| digit.is_ascii_digit())
+        })
 }
 
 /// One missing governance document or required section.

@@ -1,0 +1,4 @@
+agent malformed {
+    provider: 42
+    context_window: 128000
+}

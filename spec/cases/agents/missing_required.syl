@@ -1,0 +1,4 @@
+agent incomplete {
+    provider: "openai"
+    model: "gpt-5"
+}

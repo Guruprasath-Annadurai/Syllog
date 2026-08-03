@@ -5,11 +5,22 @@ Version 0.1-draft · 3 August 2026
 ## 1. Status and conformance
 
 This document defines the intended Syllog v1 language. Normative terms **must**,
-**must not**, **should**, and **may** have their RFC 2119 meanings. The current
-repository is a bootstrap implementation: `syllog-parser` accepts the compact
-declarative grammar in §14, while the remainder is a design contract for later
-compiler milestones. A tool must not claim v1 conformance until it implements
-all mandatory static and dynamic semantics in this manual.
+**must not**, **should**, and **may** have their RFC 2119 meanings. Features are
+classified as follows:
+
+- **Executable normative** rules are listed by stable identifier in §14.1 and
+  are enforced by the current compiler and conformance suite.
+- **Design-only** material describes the intended v1 contract but is not an
+  implemented language promise until promoted into §14.1 by an accepted RFC and
+  executable positive and negative fixtures.
+- **Experimental** material covers `probe`, `zk_verify`, `evo`, and `asi_loop`.
+  It is post-1.0 research, unavailable in production profiles, and cannot be
+  used to claim language conformance.
+
+Sections 2–11 are design-only except where a rule is explicitly promoted in
+§14.1. Sections 12–13 and the experimental constructs in §11 are experimental.
+A tool must not claim full v1 conformance until every mandatory static and
+dynamic semantic has been promoted and implemented.
 
 Syllog is a memory-safe, expression-oriented systems language with explicit
 effects and domain constructs for native applications, streaming agent graphs,
@@ -374,10 +385,36 @@ expression = literal | path | array | call | field-access | prefix | infix
 
 It produces a typed-syntax `Ast` with declarations, types, statements,
 expressions, patterns, match arms, call arguments, and source spans. "Typed"
-here means annotations are represented structurally; semantic type validation
-is not implemented yet. The complete v1 examples still contain declarations
+here means annotations are represented structurally. The current semantic pass
+resolves names and implemented algebraic types, checks expression and pipeline
+compatibility, and checks supported closed matches for exhaustiveness. The
+complete v1 examples still contain declarations
 such as `component`, `impl`, `mesh`, `probe`, `evo`, and `asi_loop` outside this
 milestone and therefore remain future conformance fixtures.
+
+### 14.1 Executable normative rules
+
+Every rule below has at least one accepted and one rejected program in
+`spec/cases/manifest.json`. A change to an identifier or its observable
+diagnostic behavior follows the compatibility policy in §15.
+
+| Rule identifier | Current normative requirement |
+| --- | --- |
+| `SYL-SYNTAX-ITEM-001` | A compilation unit contains only grammar-supported declarations; malformed items emit `SYL0001`. |
+| `SYL-SYMBOL-UNIQUE-001` | Type and value declarations are unique within their namespace; duplicates emit `SYL2001`. |
+| `SYL-TYPE-NAME-001` | Every referenced type resolves to a primitive or declared type; unknown types emit `SYL2002`. |
+| `SYL-VALUE-NAME-001` | Every referenced value, constructor, variant, and field resolves; unknown names emit `SYL2003`. |
+| `SYL-TYPE-OPTION-001` | `Option<T>` takes exactly one type argument and supports `some(T)` and `none`. |
+| `SYL-TYPE-RESULT-001` | `Result<T,E>` takes exactly two type arguments and supports `ok(T)` and `err(E)`. |
+| `SYL-TYPE-COMPAT-001` | Checked initializers, calls, and returns must be type-compatible; mismatches emit `SYL2101`. |
+| `SYL-MATCH-EXHAUSTIVE-001` | Matches over `Bool`, enums, `Option`, and `Result` must cover every remaining case; failures emit `SYL2301`. |
+| `SYL-DOMAIN-UNIQUE-001` | Agent, pipeline, and safety-bound property names are unique; duplicates emit `SYL1001`. |
+| `SYL-AGENT-REQUIRED-001` | An agent defines `provider` and `context_window`; missing properties emit `SYL1002`. |
+| `SYL-AGENT-PROVIDER-001` | A provider is a non-empty route string with model or a valid named-argument provider call; malformed definitions emit `SYL1201`. |
+| `SYL-AGENT-FALLBACK-001` | Fallback is an array of self-contained non-empty routes or provider calls; malformed entries emit `SYL1202`. |
+| `SYL-PIPELINE-REFERENCE-001` | A pipeline's required `agent` property names a declared agent; invalid references emit `SYL1101`. |
+| `SYL-PIPELINE-CONTRACT-001` | A typed pipeline input and output are compatible with the selected typed agent; failures emit `SYL2201`. |
+| `SYL-SAFETY-REQUIRED-001` | A safety bound contains at least one `require` or `policy` property; omission emits `SYL1002`. |
 
 ## 15. Diagnostics, profiles, and security
 

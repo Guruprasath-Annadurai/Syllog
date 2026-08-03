@@ -1,0 +1,3 @@
+fn broken() -> Bool {
+    1
+}

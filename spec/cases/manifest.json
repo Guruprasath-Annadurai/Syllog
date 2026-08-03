@@ -4,15 +4,155 @@
     {
       "edition": "2026",
       "source": "syntax/minimal_pass.syl",
+      "rules": ["SYL-SYNTAX-ITEM-001"],
+      "polarity": "positive",
       "expected": { "kind": "pass" }
     },
     {
       "edition": "2026",
+      "source": "syntax/malformed_item.syl",
+      "rules": ["SYL-SYNTAX-ITEM-001"],
+      "polarity": "negative",
+      "expected": { "kind": "diagnostics", "codes": ["SYL0001"] }
+    },
+    {
+      "edition": "2026",
+      "source": "types/algebraic_pass.syl",
+      "rules": [
+        "SYL-SYMBOL-UNIQUE-001",
+        "SYL-TYPE-NAME-001",
+        "SYL-VALUE-NAME-001",
+        "SYL-TYPE-OPTION-001",
+        "SYL-TYPE-RESULT-001",
+        "SYL-TYPE-COMPAT-001",
+        "SYL-MATCH-EXHAUSTIVE-001"
+      ],
+      "polarity": "positive",
+      "expected": { "kind": "pass" }
+    },
+    {
+      "edition": "2026",
+      "source": "types/duplicate_symbol.syl",
+      "rules": ["SYL-SYMBOL-UNIQUE-001"],
+      "polarity": "negative",
+      "expected": { "kind": "diagnostics", "codes": ["SYL2001"] }
+    },
+    {
+      "edition": "2026",
+      "source": "types/unknown_type.syl",
+      "rules": ["SYL-TYPE-NAME-001"],
+      "polarity": "negative",
+      "expected": { "kind": "diagnostics", "codes": ["SYL2002"] }
+    },
+    {
+      "edition": "2026",
       "source": "semantics/unknown_value.syl",
-      "expected": {
-        "kind": "diagnostics",
-        "codes": ["SYL2003"]
-      }
+      "rules": ["SYL-VALUE-NAME-001"],
+      "polarity": "negative",
+      "expected": { "kind": "diagnostics", "codes": ["SYL2003"] }
+    },
+    {
+      "edition": "2026",
+      "source": "types/option_arity.syl",
+      "rules": ["SYL-TYPE-OPTION-001"],
+      "polarity": "negative",
+      "expected": { "kind": "diagnostics", "codes": ["SYL2004"] }
+    },
+    {
+      "edition": "2026",
+      "source": "types/result_arity.syl",
+      "rules": ["SYL-TYPE-RESULT-001"],
+      "polarity": "negative",
+      "expected": { "kind": "diagnostics", "codes": ["SYL2004"] }
+    },
+    {
+      "edition": "2026",
+      "source": "types/return_mismatch.syl",
+      "rules": ["SYL-TYPE-COMPAT-001"],
+      "polarity": "negative",
+      "expected": { "kind": "diagnostics", "codes": ["SYL2101"] }
+    },
+    {
+      "edition": "2026",
+      "source": "match/non_exhaustive.syl",
+      "rules": ["SYL-MATCH-EXHAUSTIVE-001"],
+      "polarity": "negative",
+      "expected": { "kind": "diagnostics", "codes": ["SYL2301"] }
+    },
+    {
+      "edition": "2026",
+      "source": "agents/valid.syl",
+      "rules": [
+        "SYL-DOMAIN-UNIQUE-001",
+        "SYL-AGENT-REQUIRED-001",
+        "SYL-AGENT-PROVIDER-001",
+        "SYL-AGENT-FALLBACK-001"
+      ],
+      "polarity": "positive",
+      "expected": { "kind": "pass" }
+    },
+    {
+      "edition": "2026",
+      "source": "agents/duplicate_property.syl",
+      "rules": ["SYL-DOMAIN-UNIQUE-001"],
+      "polarity": "negative",
+      "expected": { "kind": "diagnostics", "codes": ["SYL1001"] }
+    },
+    {
+      "edition": "2026",
+      "source": "agents/missing_required.syl",
+      "rules": ["SYL-AGENT-REQUIRED-001"],
+      "polarity": "negative",
+      "expected": { "kind": "diagnostics", "codes": ["SYL1002"] }
+    },
+    {
+      "edition": "2026",
+      "source": "agents/malformed_provider.syl",
+      "rules": ["SYL-AGENT-PROVIDER-001"],
+      "polarity": "negative",
+      "expected": { "kind": "diagnostics", "codes": ["SYL1201"] }
+    },
+    {
+      "edition": "2026",
+      "source": "agents/malformed_fallback.syl",
+      "rules": ["SYL-AGENT-FALLBACK-001"],
+      "polarity": "negative",
+      "expected": { "kind": "diagnostics", "codes": ["SYL1202"] }
+    },
+    {
+      "edition": "2026",
+      "source": "pipelines/valid.syl",
+      "rules": ["SYL-PIPELINE-REFERENCE-001", "SYL-PIPELINE-CONTRACT-001"],
+      "polarity": "positive",
+      "expected": { "kind": "pass" }
+    },
+    {
+      "edition": "2026",
+      "source": "pipelines/unknown_agent.syl",
+      "rules": ["SYL-PIPELINE-REFERENCE-001"],
+      "polarity": "negative",
+      "expected": { "kind": "diagnostics", "codes": ["SYL1101"] }
+    },
+    {
+      "edition": "2026",
+      "source": "pipelines/contract_mismatch.syl",
+      "rules": ["SYL-PIPELINE-CONTRACT-001"],
+      "polarity": "negative",
+      "expected": { "kind": "diagnostics", "codes": ["SYL2201", "SYL2201"] }
+    },
+    {
+      "edition": "2026",
+      "source": "safety/valid.syl",
+      "rules": ["SYL-SAFETY-REQUIRED-001"],
+      "polarity": "positive",
+      "expected": { "kind": "pass" }
+    },
+    {
+      "edition": "2026",
+      "source": "safety/missing_required.syl",
+      "rules": ["SYL-SAFETY-REQUIRED-001"],
+      "polarity": "negative",
+      "expected": { "kind": "diagnostics", "codes": ["SYL1002"] }
     }
   ]
 }

@@ -1,0 +1,8 @@
+enum Color { red, green, blue }
+
+fn label(color: Color) -> String {
+    match color {
+        Color::red => "red",
+        Color::green => "green",
+    }
+}

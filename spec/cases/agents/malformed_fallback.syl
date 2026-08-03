@@ -1,0 +1,5 @@
+agent malformed {
+    provider: openai(model: "gpt-5")
+    context_window: 128000
+    fallback: [42]
+}

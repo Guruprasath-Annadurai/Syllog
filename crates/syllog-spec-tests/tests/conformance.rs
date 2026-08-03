@@ -1,7 +1,9 @@
 //! Language conformance manifest contracts.
 
 use std::path::Path;
-use syllog_spec_tests::{ExpectedOutcome, load_cases};
+use syllog_spec_tests::{
+    CasePolarity, ExpectedOutcome, load_cases, load_normative_rule_ids, validate_rule_coverage,
+};
 
 #[test]
 fn load_cases_preserves_expected_diagnostic_codes() {
@@ -9,21 +11,31 @@ fn load_cases_preserves_expected_diagnostic_codes() {
         .expect("repository path should resolve");
     let cases = load_cases(&repository.join("spec/cases")).expect("manifest should load");
 
-    assert_eq!(cases.len(), 2);
-    assert_eq!(cases[0].edition, "2026");
+    assert_eq!(cases.len(), 20);
+    let unknown_value = cases
+        .iter()
+        .find(|case| case.source.ends_with("semantics/unknown_value.syl"))
+        .expect("unknown-value case should exist");
+    assert_eq!(unknown_value.edition, "2026");
     assert_eq!(
-        cases[0].source,
+        unknown_value.source,
         repository.join("spec/cases/semantics/unknown_value.syl")
     );
     assert_eq!(
-        cases[0].expected,
+        unknown_value.expected,
         ExpectedOutcome::Diagnostics(vec!["SYL2003".into()])
     );
+    assert_eq!(unknown_value.rules, ["SYL-VALUE-NAME-001"]);
+    assert_eq!(unknown_value.polarity, CasePolarity::Negative);
+    let minimal = cases
+        .iter()
+        .find(|case| case.source.ends_with("syntax/minimal_pass.syl"))
+        .expect("minimal syntax case should exist");
     assert_eq!(
-        cases[1].source,
+        minimal.source,
         repository.join("spec/cases/syntax/minimal_pass.syl")
     );
-    assert_eq!(cases[1].expected, ExpectedOutcome::Pass);
+    assert_eq!(minimal.expected, ExpectedOutcome::Pass);
 }
 
 #[test]
@@ -36,8 +48,20 @@ fn load_cases_rejects_duplicate_edition_and_source() {
         r#"{
             "schema_version": 1,
             "cases": [
-                { "edition": "2026", "source": "case.syl", "expected": { "kind": "pass" } },
-                { "edition": "2026", "source": "case.syl", "expected": { "kind": "pass" } }
+                {
+                    "edition": "2026",
+                    "source": "case.syl",
+                    "rules": ["SYL-SYNTAX-ITEM-001"],
+                    "polarity": "positive",
+                    "expected": { "kind": "pass" }
+                },
+                {
+                    "edition": "2026",
+                    "source": "case.syl",
+                    "rules": ["SYL-SYNTAX-ITEM-001"],
+                    "polarity": "positive",
+                    "expected": { "kind": "pass" }
+                }
             ]
         }"#,
     )
@@ -49,4 +73,65 @@ fn load_cases_rejects_duplicate_edition_and_source() {
         error.to_string().contains("duplicate conformance case"),
         "unexpected error: {error:#}"
     );
+}
+
+#[test]
+fn compiler_outcomes_are_exact_and_deterministic() {
+    let repository = std::fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
+        .expect("repository path should resolve");
+    let cases = load_cases(&repository.join("spec/cases")).expect("manifest should load");
+
+    for case in cases {
+        let source =
+            std::fs::read_to_string(&case.source).expect("fixture source should be readable");
+        let first = syllog_compiler::compile(case.source.display().to_string(), &source);
+        let second = syllog_compiler::compile(case.source.display().to_string(), &source);
+        let first_codes = first
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.code.clone())
+            .collect::<Vec<_>>();
+        let second_codes = second
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.code.clone())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            first_codes,
+            second_codes,
+            "nondeterministic diagnostics for {}",
+            case.source.display()
+        );
+        match case.expected {
+            ExpectedOutcome::Pass => assert!(
+                first.success(),
+                "{} emitted {first_codes:?}",
+                case.source.display()
+            ),
+            ExpectedOutcome::Diagnostics(expected) => assert_eq!(
+                first_codes,
+                expected,
+                "unexpected diagnostics for {}",
+                case.source.display()
+            ),
+            ExpectedOutcome::Run { .. } => panic!(
+                "runtime conformance is unavailable before the reference interpreter: {}",
+                case.source.display()
+            ),
+        }
+    }
+}
+
+#[test]
+fn every_normative_rule_has_positive_and_negative_fixtures() {
+    let repository = std::fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
+        .expect("repository path should resolve");
+    let rules = load_normative_rule_ids(&repository.join("docs/language-reference.md"))
+        .expect("normative rule identifiers should load");
+    let cases = load_cases(&repository.join("spec/cases")).expect("manifest should load");
+
+    let gaps = validate_rule_coverage(&rules, &cases);
+
+    assert!(gaps.is_empty(), "uncovered normative rules: {gaps:#?}");
 }

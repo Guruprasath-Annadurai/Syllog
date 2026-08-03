@@ -1,0 +1,25 @@
+struct Failure {}
+
+enum Color {
+    red,
+    green,
+}
+
+fn maybe(value: String) -> Option<String> {
+    Option::some(value)
+}
+
+fn outcome(value: String) -> Result<String, Failure> {
+    Result::ok(value)
+}
+
+fn label(color: Color) -> String {
+    match color {
+        Color::red => "red",
+        Color::green => "green",
+    }
+}
+
+fn identity(value: U64) -> U64 {
+    value
+}

@@ -1,0 +1,3 @@
+state Invalid {
+    value: Option<String, U64> = none
+}

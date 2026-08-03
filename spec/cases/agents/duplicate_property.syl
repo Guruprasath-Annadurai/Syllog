@@ -1,0 +1,6 @@
+agent duplicate {
+    provider: "openai"
+    provider: "openai"
+    model: "gpt-5"
+    context_window: 128000
+}

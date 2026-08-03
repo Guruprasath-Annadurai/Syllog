@@ -1,0 +1,17 @@
+enum Outcome { accepted, rejected }
+
+fn accept() -> Outcome {
+    Outcome::accepted
+}
+
+agent worker {
+    provider: openai(model: "gpt-5")
+    context_window: 128000
+    input: String = request
+    output: Outcome = response
+}
+
+pipeline classify(input: String) -> Outcome {
+    agent: AgentRef = worker
+    result: Outcome = accept()
+}
