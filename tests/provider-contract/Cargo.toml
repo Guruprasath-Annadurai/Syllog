@@ -1,0 +1,17 @@
+[package]
+name = "syllog-provider-contract-tests"
+description = "Offline provider adapter contract tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dev-dependencies]
+syllog-provider-anthropic = { path = "../../crates/syllog-provider-anthropic", version = "0.1.0" }
+syllog-provider-local = { path = "../../crates/syllog-provider-local", version = "0.1.0" }
+syllog-provider-openai = { path = "../../crates/syllog-provider-openai", version = "0.1.0" }
+syllog-proxy = { path = "../../crates/syllog-proxy", version = "0.1.0" }
+tokio.workspace = true
+
+[lints]
+workspace = true

@@ -28,12 +28,12 @@ yet emit resumable async frames.
 - [x] Credential-kind declarations and formatting/JSON-safe secret values
 - [x] Explicit idempotent cancellation with cancellation-safe bounded sinks
 - [x] Ordered provider terminal failures and retained backpressure behavior
-- [ ] Adapter-instance credential capability injection
+- [x] Adapter-instance credential capability injection
 
-Known limitation: the ABI declares credential kinds and provides a redacted
-secret container, but actual credential injection belongs to the concrete
-adapter contract in Gate 7.4. No provider secret is currently placed in a model
-request or lifecycle event.
+Known limitation: adapter credentials are capability-wrapped and are excluded
+from formatting and serialization, but OS keychain/HSM-backed secret providers
+do not exist yet. No provider secret is placed in a model request or lifecycle
+event.
 
 ## Gate 7.3 — Production pipeline executor
 
@@ -54,9 +54,29 @@ contain only the normalized error, so failure-event retention is not claimed.
 
 ## Gate 7.4 — Provider adapters
 
-Status: not started.
+- [x] Separate `OpenAI`, `Anthropic`, and local-model adapter crates
+- [x] Optional CLI linkage through independent Cargo feature flags
+- [x] Vendor-specific JSON frame decoding and normalized protocol errors
+- [x] Identical ordered partial-failure behavior across every adapter
+- [x] Identical bounded-sink cancellation behavior across every adapter
+- [x] Credential and prompt redaction at the injected transport boundary
+- [x] Offline, credential-free cross-adapter contract suite
+- [ ] Incremental SSE/HTTP transport (the current injected transport returns a
+      bounded invocation batch)
+- [ ] Local HTTP contract server covering status codes and streaming timing
+- [ ] Provider-specific authentication headers and retry-after hints
+- [ ] Opt-in nightly live tests with isolated quotas
+
+Known limitation: these are real ABI adapters and vendor frame decoders, but
+they do not yet initiate network or local-process I/O. The transport is an
+injected capability exercised entirely offline; its current batch-returning
+shape must be replaced with an incremental bounded frame stream before an HTTP
+implementation can preserve end-to-end backpressure. Calling these production
+HTTP adapters at this checkpoint would be inaccurate.
 
 ## Phase 7 exit gate
 
-Not satisfied. Provider-neutral bounded pipelines and all adapter contracts must
-pass without external services before Phase 7 can be released.
+Not satisfied. The provider-neutral pipeline and four offline adapter contracts
+pass, but the unchecked async-scope, failure-observability, cancellation-grace,
+incremental transport, HTTP contract-server, and nightly-live-test items above
+remain release blockers.

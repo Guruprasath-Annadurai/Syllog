@@ -25,6 +25,9 @@ syllog-interpreter = { path = "../syllog-interpreter", version = "0.1.0" }
 syllog-parser = { path = "../syllog-parser", version = "0.1.0" }
 syllog-package = { path = "../syllog-package", version = "0.1.0" }
 syllog-project = { path = "../syllog-project", version = "0.1.0" }
+syllog-provider-anthropic = { path = "../syllog-provider-anthropic", version = "0.1.0", optional = true }
+syllog-provider-local = { path = "../syllog-provider-local", version = "0.1.0", optional = true }
+syllog-provider-openai = { path = "../syllog-provider-openai", version = "0.1.0", optional = true }
 syllog-registry-client = { path = "../syllog-registry-client", version = "0.1.0" }
 syllog-runtime = { path = "../syllog-runtime", version = "0.1.0" }
 syllog-semantic = { path = "../syllog-semantic", version = "0.1.0" }
@@ -33,6 +36,12 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 toml_edit.workspace = true
+
+[features]
+default = []
+provider-anthropic = ["dep:syllog-provider-anthropic"]
+provider-local = ["dep:syllog-provider-local"]
+provider-openai = ["dep:syllog-provider-openai"]
 
 [lints]
 workspace = true

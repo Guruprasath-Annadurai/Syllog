@@ -10,11 +10,15 @@ members = [
     "crates/syllog-parser",
     "crates/syllog-package",
     "crates/syllog-project",
+    "crates/syllog-provider-anthropic",
+    "crates/syllog-provider-local",
+    "crates/syllog-provider-openai",
     "crates/syllog-proxy",
     "crates/syllog-registry-client",
     "crates/syllog-runtime",
     "crates/syllog-semantic",
     "crates/syllog-spec-tests",
+    "tests/provider-contract",
 ]
 
 [workspace.package]

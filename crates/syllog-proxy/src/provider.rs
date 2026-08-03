@@ -3,6 +3,7 @@
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize, Serializer};
 
@@ -42,14 +43,14 @@ pub struct ProviderDescriptor {
 
 /// Secret whose formatting and serialization are always redacted.
 #[derive(Clone, PartialEq, Eq)]
-pub struct SecretValue(String);
+pub struct SecretValue(Arc<str>);
 
 impl SecretValue {
     /// Wraps secret material. Callers cannot retrieve it through formatting or
     /// serialization APIs.
     #[must_use]
     pub fn new(value: impl Into<String>) -> Self {
-        Self(value.into())
+        Self(Arc::from(value.into()))
     }
 
     /// Executes an adapter-owned closure with transient access to the secret.
@@ -99,6 +100,56 @@ pub struct ModelRequest {
     pub route: ModelRoute,
     /// Input text supplied to the model.
     pub input: String,
+}
+
+/// Credential-safe request passed from a provider adapter to its transport.
+///
+/// Debug output deliberately omits both prompt and credential contents. The
+/// type is not serializable, preventing accidental telemetry serialization.
+#[derive(Clone, PartialEq, Eq)]
+pub struct TransportRequest {
+    /// Stable provider identifier.
+    pub provider: String,
+    /// Provider-specific model identifier.
+    pub model: String,
+    /// User/model input. This field must never be logged by transports.
+    pub input: String,
+    /// Optional credential capability required by the remote provider.
+    pub authorization: Option<SecretValue>,
+}
+
+impl fmt::Debug for TransportRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("TransportRequest")
+            .field("provider", &self.provider)
+            .field("model", &self.model)
+            .field("input", &"[REDACTED]")
+            .field("authorization", &self.authorization)
+            .finish()
+    }
+}
+
+/// One provider transport frame before vendor-specific decoding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TransportFrame {
+    /// A complete vendor JSON event payload.
+    Data(String),
+    /// A normalized terminal transport failure.
+    Error(ProviderError),
+}
+
+/// A boxed asynchronous transport invocation.
+pub type TransportFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<Vec<TransportFrame>, ProviderError>> + Send + 'a>>;
+
+/// Injected HTTP, socket, or process transport used by provider adapters.
+///
+/// Keeping transport outside adapters makes frame decoding deterministic and
+/// permits offline conformance tests without production credentials.
+pub trait FrameTransport: Send + Sync {
+    /// Executes one request and returns ordered raw frames.
+    fn frames(&self, request: TransportRequest) -> TransportFuture<'_>;
 }
 
 /// Normalized provider failure category.

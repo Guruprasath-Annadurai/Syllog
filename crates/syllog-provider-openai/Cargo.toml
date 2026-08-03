@@ -1,0 +1,16 @@
+[package]
+name = "syllog-provider-openai"
+description = "Feature-gated OpenAI provider adapter for Syllog"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+syllog-proxy = { path = "../syllog-proxy", version = "0.1.0" }
+
+[lints]
+workspace = true

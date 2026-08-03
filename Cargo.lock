@@ -938,6 +938,9 @@ dependencies = [
  "syllog-package",
  "syllog-parser",
  "syllog-project",
+ "syllog-provider-anthropic",
+ "syllog-provider-local",
+ "syllog-provider-openai",
  "syllog-registry-client",
  "syllog-runtime",
  "syllog-semantic",
@@ -1045,6 +1048,41 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
+]
+
+[[package]]
+name = "syllog-provider-anthropic"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "syllog-proxy",
+]
+
+[[package]]
+name = "syllog-provider-contract-tests"
+version = "0.1.0"
+dependencies = [
+ "syllog-provider-anthropic",
+ "syllog-provider-local",
+ "syllog-provider-openai",
+ "syllog-proxy",
+ "tokio",
+]
+
+[[package]]
+name = "syllog-provider-local"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "syllog-proxy",
+]
+
+[[package]]
+name = "syllog-provider-openai"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "syllog-proxy",
 ]
 
 [[package]]
