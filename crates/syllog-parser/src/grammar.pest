@@ -24,9 +24,10 @@ enum_decl = { visibility? ~ kw_enum ~ identifier ~ "{" ~ enum_variant* ~ "}" }
 enum_variant = { identifier ~ ("(" ~ type_list? ~ ")")? ~ separator? }
 
 function_decl = {
-    visibility? ~ async_marker? ~ kw_fn ~ identifier
+    attribute* ~ visibility? ~ async_marker? ~ kw_fn ~ identifier
     ~ parameters ~ return_type? ~ block
 }
+attribute = { "#[" ~ identifier ~ "]" }
 parameters = { "(" ~ parameter_list? ~ ")" }
 parameter_list = _{ parameter ~ ("," ~ parameter)* ~ ","? }
 parameter = { identifier ~ ":" ~ type_expr }

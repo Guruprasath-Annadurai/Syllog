@@ -2,8 +2,10 @@
 
 pub mod build;
 pub mod dev;
+pub mod inspect;
 pub mod new;
 pub mod run;
+pub mod test;
 
 use std::fs;
 use std::path::Path;

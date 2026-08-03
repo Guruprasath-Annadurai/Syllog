@@ -19,9 +19,11 @@ reference.
 crates/syllog-cli      `syllog check` and `syllog run` entry point
 crates/syllog-codegen-wasm deterministic verified-MIR Wasm backend
 crates/syllog-compiler parse/resolve/type-check orchestration and presentation
+crates/syllog-dev-server debounced incremental project development service
 crates/syllog-interpreter deterministic reference MIR execution
 crates/syllog-ir       control-flow MIR and mandatory verifier
 crates/syllog-parser   Pest grammar, AST, and `parse_syl`
+crates/syllog-project  strict manifests, capability profiles, and discovery
 crates/syllog-semantic symbol tables, type resolution, and static checks
 crates/syllog-proxy    asynchronous model route/circuit-breaker primitives
 crates/syllog-runtime  policy-enforced Wasmtime execution foundation
@@ -46,6 +48,11 @@ cargo run -p syllog-cli -- check examples/semantic_frontend.syl
 cargo run -p syllog-cli -- check examples/semantic_frontend.syl --json
 cargo run -p syllog-cli -- build spec/cases/runtime/exit_42.syl --target wasm32-syllog --output /tmp/exit_42.wasm
 cargo run -p syllog-cli -- run spec/cases/runtime/exit_42.syl --fuel 100000 --memory-bytes 65536
+cargo run -p syllog-cli -- new my-agent --template agent
+cd my-agent
+syllog dev
+syllog test
+syllog inspect capabilities --json
 ```
 
 Run the complete repository gate before submitting changes:

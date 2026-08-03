@@ -38,18 +38,47 @@ fn execute(mut args: impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
         "build" => execute_build(&mut args),
         "run" => execute_run(&mut args),
         "dev" => execute_dev(&mut args),
+        "test" => execute_test(&mut args),
+        "inspect" => execute_inspect(&mut args),
         "schema" => execute_schema(&mut args),
         "new" => execute_new(&mut args),
         "help" | "--help" | "-h" => {
             println!(
-                "Syllog compiler\n\nUSAGE:\n    syllog new NAME [--template basic|agent|native]\n    syllog check <file.syl> [--json|--diagnostic-format=json]\n    syllog dev [--json-events] [--once]\n    syllog build <file.syl> --target wasm32-syllog --output PATH\n    syllog run <file.syl> [--fuel N] [--memory-bytes N]\n    syllog schema manifest"
+                "Syllog compiler\n\nUSAGE:\n    syllog new NAME [--template basic|agent|native]\n    syllog check <file.syl> [--json|--diagnostic-format=json]\n    syllog dev [--json-events] [--once]\n    syllog test [--json]\n    syllog inspect project|hir|capabilities [--json]\n    syllog build <file.syl> --target wasm32-syllog --output PATH\n    syllog run <file.syl> [--fuel N] [--memory-bytes N]\n    syllog schema manifest"
             );
             Ok(ExitCode::SUCCESS)
         }
         other => {
-            bail!("unknown command '{other}'; expected new, check, dev, build, run, or schema")
+            bail!(
+                "unknown command '{other}'; expected new, check, dev, test, inspect, build, run, or schema"
+            )
         }
     }
+}
+
+fn execute_test(args: &mut impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
+    let mut json = false;
+    for argument in args {
+        match argument.as_str() {
+            "--json" => json = true,
+            _ => bail!("unknown test option '{argument}'"),
+        }
+    }
+    commands::test::execute(&env::current_dir()?, json)
+}
+
+fn execute_inspect(args: &mut impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
+    let subject = args
+        .next()
+        .context("usage: syllog inspect project|hir|capabilities [--json]")?;
+    let mut json = false;
+    for argument in args {
+        match argument.as_str() {
+            "--json" => json = true,
+            _ => bail!("unknown inspect option '{argument}'"),
+        }
+    }
+    commands::inspect::execute(&env::current_dir()?, &subject, json)
 }
 
 fn execute_dev(args: &mut impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {

@@ -176,6 +176,7 @@ impl<'a> Lowerer<'a> {
                 let body = self.lower_block(&node.body, &mut scope);
                 (
                     HirDefinitionKind::Function(HirFunction {
+                        is_test: has_attribute(node, "test"),
                         asynchronous: node.asynchronous,
                         parameters,
                         result,
@@ -503,6 +504,13 @@ impl<'a> Lowerer<'a> {
         self.next_definition += 1;
         id
     }
+}
+
+fn has_attribute(function: &syllog_parser::FunctionNode, name: &str) -> bool {
+    function
+        .attributes
+        .iter()
+        .any(|attribute| attribute.name == name)
 }
 
 fn item_name(item: &Item) -> &str {

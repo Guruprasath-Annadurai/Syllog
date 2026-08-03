@@ -38,6 +38,17 @@ fn new_basic_project_is_deterministic_and_immediately_checks_and_runs() {
             String::from_utf8_lossy(&output.stderr)
         );
     }
+    let tests = Command::new(env!("CARGO_BIN_EXE_syllog"))
+        .arg("test")
+        .current_dir(&project)
+        .output()
+        .expect("generated tests should execute");
+    assert!(
+        tests.status.success(),
+        "{}",
+        String::from_utf8_lossy(&tests.stderr)
+    );
+    assert!(String::from_utf8_lossy(&tests.stdout).contains("scaffold_smoke ... passed"));
 }
 
 #[test]

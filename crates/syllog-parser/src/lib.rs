@@ -188,6 +188,16 @@ fn parse_enum_variant(pair: Pair<'_, Rule>) -> anyhow::Result<EnumVariant> {
 fn parse_function(pair: Pair<'_, Rule>) -> anyhow::Result<FunctionNode> {
     let span = pair_span(&pair);
     let mut parts = meaningful_inner(pair);
+    let mut attributes = Vec::new();
+    while matches!(parts.front().map(Pair::as_rule), Some(Rule::attribute)) {
+        let attribute = parts.pop_front().expect("front checked");
+        let attribute_span = pair_span(&attribute);
+        let mut attribute_parts = meaningful_inner(attribute);
+        attributes.push(AttributeNode {
+            name: take_identifier(&mut attribute_parts, "attribute name")?,
+            span: attribute_span,
+        });
+    }
     let public = take_marker(&mut parts, Rule::visibility);
     let asynchronous = take_marker(&mut parts, Rule::async_marker);
     let name = take_identifier(&mut parts, "function name")?;
@@ -201,6 +211,7 @@ fn parse_function(pair: Pair<'_, Rule>) -> anyhow::Result<FunctionNode> {
     };
     let body = parse_block(pop_front(&mut parts, "function body")?)?;
     Ok(FunctionNode {
+        attributes,
         public,
         asynchronous,
         name,

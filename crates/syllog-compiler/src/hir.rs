@@ -118,6 +118,8 @@ pub struct HirVariant {
 /// A lowered function signature and body.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HirFunction {
+    /// Whether this function is an isolated source-level test.
+    pub is_test: bool,
     /// Whether suspension is permitted.
     pub asynchronous: bool,
     /// Parameters in declaration order.

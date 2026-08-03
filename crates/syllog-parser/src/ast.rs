@@ -174,6 +174,8 @@ pub enum StatementKind {
 /// A function declaration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FunctionNode {
+    /// Declarative compiler attributes in source order.
+    pub attributes: Vec<AttributeNode>,
     /// Whether the declaration is public.
     pub public: bool,
     /// Whether the function may suspend.
@@ -187,6 +189,15 @@ pub struct FunctionNode {
     /// Function body.
     pub body: Block,
     /// Full declaration range.
+    pub span: Span,
+}
+
+/// Compiler metadata attached to a declaration.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AttributeNode {
+    /// Attribute name without delimiters.
+    pub name: String,
+    /// Full `#[name]` source range.
     pub span: Span,
 }
 
