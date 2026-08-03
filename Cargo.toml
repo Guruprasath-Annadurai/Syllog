@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/syllog-cli",
+    "crates/syllog-codegen-wasm",
     "crates/syllog-compiler",
     "crates/syllog-ir",
     "crates/syllog-interpreter",
@@ -26,6 +27,7 @@ pest = "2.8"
 pest_derive = "2.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+sha2 = "0.10"
 thiserror = "2.0"
 tempfile = "3.23"
 tokio = { version = "1.47", features = ["macros", "rt-multi-thread", "sync", "time"] }
@@ -33,6 +35,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 wasmtime = { version = "36.0", default-features = false, features = ["cranelift", "runtime"] }
 wat = "1.236"
+wasm-encoder = "0.236.1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -7,6 +7,10 @@ use syllog_ir::{
 
 fn function(blocks: Vec<BasicBlock>, locals: Vec<MirType>, result: MirType) -> MirProgram {
     MirProgram {
+        entry: Some(DefId {
+            module: 0,
+            index: 0,
+        }),
         functions: vec![MirFunction {
             id: DefId {
                 module: 0,

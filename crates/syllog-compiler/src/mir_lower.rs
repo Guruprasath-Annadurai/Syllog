@@ -38,7 +38,10 @@ pub fn lower_to_mir(hir: &HirProgram) -> Result<MirProgram, Vec<Diagnostic>> {
     if !diagnostics.is_empty() {
         return Err(diagnostics);
     }
-    let program = MirProgram { functions };
+    let program = MirProgram {
+        functions,
+        entry: hir.entry.map(mir_def_id),
+    };
     if let Err(errors) = verify(&program) {
         return Err(errors
             .into_iter()

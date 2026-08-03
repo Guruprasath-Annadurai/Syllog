@@ -215,4 +215,6 @@ pub struct MirFunction {
 pub struct MirProgram {
     /// Functions in stable definition order.
     pub functions: Vec<MirFunction>,
+    /// Executable package entry when one is declared.
+    pub entry: Option<DefId>,
 }

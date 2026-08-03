@@ -1,0 +1,28 @@
+[package]
+name = "syllog-codegen-wasm"
+description = "Deterministic WebAssembly backend for verified Syllog MIR"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+syllog-ir = { path = "../syllog-ir", version = "0.1.0" }
+thiserror.workspace = true
+wasm-encoder.workspace = true
+
+[dev-dependencies]
+syllog-compiler = { path = "../syllog-compiler", version = "0.1.0" }
+syllog-interpreter = { path = "../syllog-interpreter", version = "0.1.0" }
+syllog-parser = { path = "../syllog-parser", version = "0.1.0" }
+syllog-runtime = { path = "../syllog-runtime", version = "0.1.0" }
+syllog-semantic = { path = "../syllog-semantic", version = "0.1.0" }
+wasmtime.workspace = true
+
+[lints]
+workspace = true
