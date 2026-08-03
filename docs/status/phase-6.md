@@ -26,15 +26,19 @@ level; full cross-module domain-contract propagation remains pending.
 
 ## Gate 6.2 — Package resolver and lockfile
 
-- [ ] Version constraint solver
-- [ ] Yank and conflict handling
-- [ ] Offline/cache policy
-- [ ] Content checksums
-- [ ] Atomic deterministic `Syllog.lock`
-- [ ] Archive/path traversal defenses
+- [x] Deterministic backtracking version constraint solver
+- [x] Yank and conflict handling with stable requirement provenance
+- [x] Offline policy and immutable content-addressed cache
+- [x] SHA-256 content verification on resolution and cache reads
+- [x] Atomic deterministic `Syllog.lock`
+- [x] Archive/path traversal defenses
 - [ ] Package-aware multi-file build
 
-Status: not started.
+Checkpoint evidence: 10 focused adversarial tests pass, including input-order
+permutations that produce byte-identical lockfiles; the full repository CI gate
+passes. The solver backtracks correctly but does not yet implement PubGrub's
+learned incompatibility clauses, so very large-graph scalability is not yet
+claimed. Package-aware build integration remains pending.
 
 ## Gate 6.3 — Standard libraries
 
