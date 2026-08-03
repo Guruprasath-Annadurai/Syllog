@@ -10,7 +10,7 @@ rust-version.workspace = true
 
 [dependencies]
 serde.workspace = true
-syllog-parser = { path = "../syllog-parser" }
+syllog-parser = { path = "../syllog-parser", version = "0.1.0" }
 
 [lints]
 workspace = true

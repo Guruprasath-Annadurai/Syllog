@@ -11,8 +11,8 @@ rust-version.workspace = true
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
-syllog-parser = { path = "../syllog-parser" }
-syllog-semantic = { path = "../syllog-semantic" }
+syllog-parser = { path = "../syllog-parser", version = "0.1.0" }
+syllog-semantic = { path = "../syllog-semantic", version = "0.1.0" }
 
 [lints]
 workspace = true

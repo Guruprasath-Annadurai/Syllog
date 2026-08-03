@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [master, enterprise-platform]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+  RUST_TOOLCHAIN: 1.85.0
+  CARGO_DENY_VERSION: 0.20.2
+  CARGO_DENY_TOOLCHAIN: 1.88.0
+
+jobs:
+  workspace:
+    name: workspace (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt
+          rustup default "$RUST_TOOLCHAIN"
+
+      - name: Cache Cargo inputs and build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-rust-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-${{ env.RUST_TOOLCHAIN }}-
+
+      - name: Cache cargo-deny
+        id: cargo-deny-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-deny
+          key: ${{ runner.os }}-cargo-deny-${{ env.CARGO_DENY_VERSION }}
+
+      - name: Install pinned cargo-deny
+        if: steps.cargo-deny-cache.outputs.cache-hit != 'true'
+        run: |
+          rustup toolchain install "$CARGO_DENY_TOOLCHAIN" --profile minimal
+          cargo +"$CARGO_DENY_TOOLCHAIN" install --locked cargo-deny --version "$CARGO_DENY_VERSION"
+
+      - name: Run repository gates
+        run: bash scripts/ci.sh

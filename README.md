@@ -1,5 +1,7 @@
 # Syllog
 
+[![CI](https://github.com/syllog-lang/syllog/actions/workflows/ci.yml/badge.svg)](https://github.com/syllog-lang/syllog/actions/workflows/ci.yml)
+
 Syllog (`.syl`) is an experimental systems language for native applications,
 bounded agent orchestration, and capability-restricted cognitive optimization.
 This repository contains its Rust bootstrap workspace and draft v1 language
@@ -39,6 +41,15 @@ cargo run -p syllog-cli -- check examples/semantic_frontend.syl
 cargo run -p syllog-cli -- check examples/semantic_frontend.syl --json
 cargo run -p syllog-cli -- run examples/hello_agent.syl
 ```
+
+Run the complete repository gate before submitting changes:
+
+```bash
+bash scripts/ci.sh
+```
+
+See [the contribution guide](docs/contributing.md) for the pinned toolchain,
+dependency-policy tooling, test-first workflow, and compatibility rules.
 
 At this milestone `run` validates the program and initializes the command path;
 execution semantics will be connected in a later runtime milestone.

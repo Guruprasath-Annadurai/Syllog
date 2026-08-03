@@ -15,10 +15,10 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 serde_json.workspace = true
-syllog-compiler = { path = "../syllog-compiler" }
-syllog-parser = { path = "../syllog-parser" }
-syllog-runtime = { path = "../syllog-runtime" }
-syllog-semantic = { path = "../syllog-semantic" }
+syllog-compiler = { path = "../syllog-compiler", version = "0.1.0" }
+syllog-parser = { path = "../syllog-parser", version = "0.1.0" }
+syllog-runtime = { path = "../syllog-runtime", version = "0.1.0" }
+syllog-semantic = { path = "../syllog-semantic", version = "0.1.0" }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
