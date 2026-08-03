@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/syllog-cli",
     "crates/syllog-compiler",
+    "crates/syllog-ir",
     "crates/syllog-parser",
     "crates/syllog-proxy",
     "crates/syllog-runtime",
