@@ -1,5 +1,7 @@
 //! Command-line entry point for the Syllog compiler front end.
 
+mod commands;
+
 use anyhow::{Context, bail};
 use std::env;
 use std::fs;
@@ -32,10 +34,10 @@ fn main() -> ExitCode {
 fn execute(mut args: impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
     let command = args.next().unwrap_or_else(|| "help".to_owned());
     match command.as_str() {
-        "check" | "run" => {
+        "check" => {
             let path = args
                 .next()
-                .with_context(|| format!("usage: syllog {command} <file.syl> [--json]"))?;
+                .context("usage: syllog check <file.syl> [--json]")?;
             let mut format = DiagnosticFormat::Human;
             for argument in args {
                 format = match argument.as_str() {
@@ -48,13 +50,59 @@ fn execute(mut args: impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
             }
             check_file(Path::new(&path), format)
         }
+        "build" => {
+            let path = args
+                .next()
+                .context("usage: syllog build <file.syl> --target wasm32-syllog --output PATH")?;
+            let mut target = None;
+            let mut output = None;
+            while let Some(argument) = args.next() {
+                match argument.as_str() {
+                    "--target" => target = args.next(),
+                    "--output" | "-o" => output = args.next(),
+                    _ => bail!("unknown build option '{argument}'"),
+                }
+            }
+            commands::build::execute(
+                Path::new(&path),
+                target.as_deref().unwrap_or("wasm32-syllog"),
+                Path::new(output.as_deref().context("build requires --output PATH")?),
+            )
+        }
+        "run" => {
+            let path = args
+                .next()
+                .context("usage: syllog run <file.syl> [--fuel N] [--memory-bytes N]")?;
+            let mut fuel = 1_000_000_u64;
+            let mut memory_bytes = 64 * 1024 * 1024_usize;
+            while let Some(argument) = args.next() {
+                match argument.as_str() {
+                    "--fuel" => {
+                        fuel = args
+                            .next()
+                            .context("--fuel requires an integer")?
+                            .parse()
+                            .context("invalid --fuel value")?;
+                    }
+                    "--memory-bytes" => {
+                        memory_bytes = args
+                            .next()
+                            .context("--memory-bytes requires an integer")?
+                            .parse()
+                            .context("invalid --memory-bytes value")?;
+                    }
+                    _ => bail!("unknown run option '{argument}'"),
+                }
+            }
+            commands::run::execute(Path::new(&path), fuel, memory_bytes)
+        }
         "help" | "--help" | "-h" => {
             println!(
-                "Syllog compiler\n\nUSAGE:\n    syllog check <file.syl> [--json|--diagnostic-format=json]\n    syllog run <file.syl> [--json|--diagnostic-format=json]"
+                "Syllog compiler\n\nUSAGE:\n    syllog check <file.syl> [--json|--diagnostic-format=json]\n    syllog build <file.syl> --target wasm32-syllog --output PATH\n    syllog run <file.syl> [--fuel N] [--memory-bytes N]"
             );
             Ok(ExitCode::SUCCESS)
         }
-        other => bail!("unknown command '{other}'; expected 'check' or 'run'"),
+        other => bail!("unknown command '{other}'; expected check, build, or run"),
     }
 }
 

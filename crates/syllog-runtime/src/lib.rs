@@ -81,7 +81,7 @@ pub enum SandboxError {
     #[error("failed to instantiate sandboxed WebAssembly")]
     Instantiation(#[source] anyhow::Error),
     /// The requested export was absent or had a different signature.
-    #[error("missing or invalid i32 export '{export}'")]
+    #[error("missing or invalid integer export '{export}'")]
     InvalidExport {
         /// Requested export name.
         export: String,
@@ -238,6 +238,83 @@ impl Sandbox {
             .map_err(SandboxError::Instantiation)?;
         let function = instance
             .get_typed_func::<(), i32>(&mut store, export)
+            .map_err(|source| SandboxError::InvalidExport {
+                export: export.into(),
+                source,
+            })?;
+        match function.call(&mut store, ()) {
+            Ok(value) => Ok(value),
+            Err(_source) if store.data().limiter.exceeded => Err(SandboxError::MemoryLimitExceeded),
+            Err(source) if source.downcast_ref::<Trap>() == Some(&Trap::OutOfFuel) => {
+                Err(SandboxError::FuelExhausted)
+            }
+            Err(source) => Err(SandboxError::Execution {
+                export: export.into(),
+                source,
+            }),
+        }
+    }
+
+    /// Executes a no-argument WebAssembly export returning `i64`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when compilation, capability validation, resource
+    /// policy setup, instantiation, export lookup, or execution fails.
+    pub fn execute_i64(
+        &self,
+        bytes: &[u8],
+        export: &str,
+        policy: &SandboxPolicy,
+    ) -> Result<i64, SandboxError> {
+        let module = self.compile(bytes).map_err(SandboxError::Compilation)?;
+        for import in module.imports() {
+            let granted = policy
+                .capabilities
+                .iter()
+                .any(|capability| capability.import() == (import.module(), import.name()));
+            if !granted {
+                return Err(SandboxError::CapabilityDenied {
+                    module: import.module().into(),
+                    name: import.name().into(),
+                });
+            }
+        }
+        let initial_memory_bytes = module
+            .resources_required()
+            .max_initial_memory_size
+            .unwrap_or(0)
+            .saturating_mul(WASM_PAGE_BYTES);
+        if initial_memory_bytes > policy.max_memory_bytes as u64 {
+            return Err(SandboxError::MemoryLimitExceeded);
+        }
+
+        let mut store = Store::new(
+            &self.engine,
+            HostState {
+                limiter: MemoryLimiter {
+                    max_bytes: policy.max_memory_bytes,
+                    exceeded: false,
+                },
+            },
+        );
+        store.limiter(|state| &mut state.limiter);
+        store
+            .set_fuel(policy.fuel)
+            .map_err(SandboxError::Configuration)?;
+        let mut linker = Linker::new(&self.engine);
+        if policy.capabilities.contains(&HostCapability::LogI32) {
+            linker
+                .func_wrap("syllog", "log_i32", |value: i32| {
+                    tracing::debug!(value, "sandbox log_i32");
+                })
+                .map_err(SandboxError::Instantiation)?;
+        }
+        let instance = linker
+            .instantiate(&mut store, &module)
+            .map_err(SandboxError::Instantiation)?;
+        let function = instance
+            .get_typed_func::<(), i64>(&mut store, export)
             .map_err(|source| SandboxError::InvalidExport {
                 export: export.into(),
                 source,

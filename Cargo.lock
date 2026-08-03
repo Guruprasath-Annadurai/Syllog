@@ -751,10 +751,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "serde_json",
+ "syllog-codegen-wasm",
  "syllog-compiler",
+ "syllog-ir",
  "syllog-parser",
  "syllog-runtime",
  "syllog-semantic",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
 ]
@@ -855,9 +858,11 @@ dependencies = [
  "anyhow",
  "serde",
  "serde_json",
+ "syllog-codegen-wasm",
  "syllog-compiler",
  "syllog-interpreter",
  "syllog-ir",
+ "syllog-runtime",
  "tempfile",
 ]
 

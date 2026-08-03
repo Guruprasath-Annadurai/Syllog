@@ -116,58 +116,71 @@ fn compiler_outcomes_are_exact_and_deterministic() {
                 case.source.display()
             ),
             ExpectedOutcome::Run { stdout, exit_code } => {
-                assert!(
-                    first.success(),
-                    "{} emitted {first_codes:?}",
-                    case.source.display()
-                );
-                let ast = first
-                    .ast
-                    .as_ref()
-                    .expect("successful compilation retains AST");
-                let symbols = first
-                    .symbols
-                    .as_ref()
-                    .expect("successful compilation retains symbols");
-                let hir = syllog_compiler::lower_to_hir(ast, symbols)
-                    .expect("runtime fixture should lower to HIR");
-                let entry = hir.entry.expect("runtime fixture should declare main");
-                let mir = syllog_compiler::lower_to_mir(&hir)
-                    .expect("runtime fixture should lower to MIR");
-                let result = syllog_interpreter::execute(
-                    &mir,
-                    syllog_ir::DefId {
-                        module: entry.module.0,
-                        index: entry.index,
-                    },
-                    syllog_interpreter::InterpreterLimits::default(),
-                )
-                .expect("runtime fixture should execute");
-                assert_eq!(
-                    result.stdout,
-                    stdout.as_bytes(),
-                    "stdout mismatch for {}",
-                    case.source.display()
-                );
-                let actual_exit = match result.value {
-                    syllog_interpreter::RuntimeValue::Unit => 0,
-                    syllog_interpreter::RuntimeValue::I64(value) => {
-                        i32::try_from(value).expect("conformance exit value should fit i32")
-                    }
-                    syllog_interpreter::RuntimeValue::U64(value) => {
-                        i32::try_from(value).expect("conformance exit value should fit i32")
-                    }
-                    value => panic!("invalid main return value for process exit: {value:?}"),
-                };
-                assert_eq!(
-                    actual_exit,
-                    exit_code,
-                    "exit mismatch for {}",
-                    case.source.display()
-                );
+                assert_runtime_case(&case.source, &first, &first_codes, &stdout, exit_code);
             }
         }
     }
+}
+
+fn assert_runtime_case(
+    source: &Path,
+    compilation: &syllog_compiler::Compilation,
+    diagnostic_codes: &[String],
+    stdout: &str,
+    exit_code: i32,
+) {
+    assert!(
+        compilation.success(),
+        "{} emitted {diagnostic_codes:?}",
+        source.display()
+    );
+    let ast = compilation
+        .ast
+        .as_ref()
+        .expect("successful compilation retains AST");
+    let symbols = compilation
+        .symbols
+        .as_ref()
+        .expect("successful compilation retains symbols");
+    let hir =
+        syllog_compiler::lower_to_hir(ast, symbols).expect("runtime fixture should lower to HIR");
+    let entry = hir.entry.expect("runtime fixture should declare main");
+    let mir = syllog_compiler::lower_to_mir(&hir).expect("runtime fixture should lower to MIR");
+    let result = syllog_interpreter::execute(
+        &mir,
+        syllog_ir::DefId {
+            module: entry.module.0,
+            index: entry.index,
+        },
+        syllog_interpreter::InterpreterLimits::default(),
+    )
+    .expect("runtime fixture should execute");
+    assert_eq!(result.stdout, stdout.as_bytes(), "stdout mismatch");
+    let actual_exit = match result.value {
+        syllog_interpreter::RuntimeValue::Unit => 0,
+        syllog_interpreter::RuntimeValue::I64(value) => {
+            i32::try_from(value).expect("conformance exit value should fit i32")
+        }
+        syllog_interpreter::RuntimeValue::U64(value) => {
+            i32::try_from(value).expect("conformance exit value should fit i32")
+        }
+        value => panic!("invalid main return value for process exit: {value:?}"),
+    };
+    assert_eq!(actual_exit, exit_code, "exit mismatch");
+    let artifact = syllog_codegen_wasm::emit(&mir, &syllog_codegen_wasm::WasmOptions::default())
+        .expect("runtime fixture should emit Wasm");
+    let policy = syllog_runtime::SandboxPolicy::new(1_000_000, 64 * 1024)
+        .expect("conformance sandbox policy should be valid");
+    let wasm_exit = syllog_runtime::Sandbox::new()
+        .expect("conformance sandbox should initialize")
+        .execute_i64(&artifact.bytes, "main", &policy)
+        .expect("runtime fixture Wasm should execute");
+    assert_eq!(
+        wasm_exit,
+        i64::from(actual_exit),
+        "interpreter/Wasm mismatch for {}",
+        source.display()
+    );
 }
 
 #[test]
