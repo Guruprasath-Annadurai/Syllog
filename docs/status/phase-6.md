@@ -42,14 +42,18 @@ claimed. Package-aware build integration remains pending.
 
 ## Gate 6.3 — Standard libraries
 
-- [ ] `core`
-- [ ] `alloc`
-- [ ] capability-gated `io`
-- [ ] capability-gated `async`
-- [ ] capability-gated `provider`
-- [ ] API compatibility snapshots and conformance coverage
+- [x] host-independent `core` bootstrap package
+- [x] checked `alloc` bootstrap package
+- [x] capability-parameterized `io` bootstrap package
+- [x] capability-parameterized `async` bootstrap package
+- [x] capability-parameterized `provider` bootstrap package
+- [x] full-signature API compatibility snapshot and conformance coverage
 
-Status: not started.
+Known limitation: these are deliberately minimal source-level bootstrap APIs.
+They do not claim completed host I/O, allocation, scheduling, or provider
+adapters; those implementations remain gated by Phases 7 and 9. Capability
+tokens have private fields and every authority-bearing public function requires
+an explicit token parameter.
 
 ## Gate 6.4 — Registry workflows
 

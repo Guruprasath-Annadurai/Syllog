@@ -1,0 +1,17 @@
+module provider;
+
+pub struct ProviderCapability {
+    token: U64,
+}
+
+pub enum ProviderError {
+    denied,
+    empty_request,
+}
+
+pub fn validate_request(capability: ProviderCapability, text: String) -> Result<String, ProviderError> {
+    match text == "" {
+        true => Result::err(ProviderError::empty_request),
+        false => Result::ok(text),
+    }
+}

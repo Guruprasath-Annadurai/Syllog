@@ -1,0 +1,16 @@
+[package]
+name = "syllog-alloc"
+version = "0.1.0"
+edition = "2026"
+
+[[targets]]
+name = "alloc"
+kind = "lib"
+path = "src/lib.syl"
+
+[dependencies]
+syllog-core = "=0.1.0"
+
+[capabilities]
+profile = "none"
+max_memory_bytes = 16777216

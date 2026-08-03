@@ -940,6 +940,8 @@ dependencies = [
  "syllog-compiler",
  "syllog-interpreter",
  "syllog-ir",
+ "syllog-parser",
+ "syllog-project",
  "syllog-runtime",
  "tempfile",
 ]

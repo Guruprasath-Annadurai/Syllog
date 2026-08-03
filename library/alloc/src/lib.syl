@@ -1,0 +1,17 @@
+module alloc;
+
+pub struct ByteBuffer {
+    pub capacity: U64,
+    pub length: U64,
+}
+
+pub enum ReserveError {
+    capacity_exceeded,
+}
+
+pub fn checked_capacity(requested: U64, maximum: U64) -> Result<U64, ReserveError> {
+    match requested <= maximum {
+        true => Result::ok(requested),
+        false => Result::err(ReserveError::capacity_exceeded),
+    }
+}

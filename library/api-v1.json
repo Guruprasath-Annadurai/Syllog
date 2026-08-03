@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "libraries": {
+    "alloc": ["fn checked_capacity(U64,U64)->Result<U64,ReserveError>", "type ByteBuffer", "type ReserveError"],
+    "async": ["async fn ready(TaskCapability,U64)->U64", "type TaskCapability"],
+    "core": ["fn clamp_i64(I64,I64,I64)->I64", "fn compare_i64(I64,I64)->Ordering", "fn max_i64(I64,I64)->I64", "fn min_i64(I64,I64)->I64", "type Ordering"],
+    "io": ["fn validate_read(IoCapability,U64)->Result<U64,IoError>", "type IoCapability", "type IoError"],
+    "provider": ["fn validate_request(ProviderCapability,String)->Result<String,ProviderError>", "type ProviderCapability", "type ProviderError"]
+  }
+}

@@ -1,0 +1,35 @@
+module core;
+
+pub enum Ordering {
+    less,
+    equal,
+    greater,
+}
+
+pub fn min_i64(left: I64, right: I64) -> I64 {
+    match left <= right {
+        true => left,
+        false => right,
+    }
+}
+
+pub fn max_i64(left: I64, right: I64) -> I64 {
+    match left >= right {
+        true => left,
+        false => right,
+    }
+}
+
+pub fn clamp_i64(value: I64, minimum: I64, maximum: I64) -> I64 {
+    min_i64(max_i64(value, minimum), maximum)
+}
+
+pub fn compare_i64(left: I64, right: I64) -> Ordering {
+    match left < right {
+        true => Ordering::less,
+        false => match left == right {
+            true => Ordering::equal,
+            false => Ordering::greater,
+        },
+    }
+}

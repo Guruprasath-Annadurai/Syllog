@@ -1,0 +1,13 @@
+[package]
+name = "syllog-core"
+version = "0.1.0"
+edition = "2026"
+
+[[targets]]
+name = "core"
+kind = "lib"
+path = "src/lib.syl"
+
+[capabilities]
+profile = "none"
+max_memory_bytes = 0

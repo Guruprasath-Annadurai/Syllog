@@ -1,0 +1,17 @@
+module io;
+
+pub struct IoCapability {
+    token: U64,
+}
+
+pub enum IoError {
+    denied,
+    invalid_size,
+}
+
+pub fn validate_read(capability: IoCapability, bytes: U64) -> Result<U64, IoError> {
+    match bytes > 0 {
+        true => Result::ok(bytes),
+        false => Result::err(IoError::invalid_size),
+    }
+}

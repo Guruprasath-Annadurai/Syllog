@@ -1,0 +1,9 @@
+module async;
+
+pub struct TaskCapability {
+    token: U64,
+}
+
+pub async fn ready(capability: TaskCapability, value: U64) -> U64 {
+    value
+}

@@ -1,0 +1,17 @@
+[package]
+name = "syllog-io"
+version = "0.1.0"
+edition = "2026"
+
+[[targets]]
+name = "io"
+kind = "lib"
+path = "src/lib.syl"
+
+[dependencies]
+syllog-alloc = "=0.1.0"
+syllog-core = "=0.1.0"
+
+[capabilities]
+profile = "native"
+max_memory_bytes = 16777216

@@ -1,0 +1,18 @@
+[package]
+name = "syllog-provider"
+version = "0.1.0"
+edition = "2026"
+
+[[targets]]
+name = "provider"
+kind = "lib"
+path = "src/lib.syl"
+
+[dependencies]
+syllog-alloc = "=0.1.0"
+syllog-async = "=0.1.0"
+syllog-core = "=0.1.0"
+
+[capabilities]
+profile = "agent"
+max_memory_bytes = 67108864
