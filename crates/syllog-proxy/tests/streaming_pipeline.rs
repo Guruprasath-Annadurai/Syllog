@@ -1,9 +1,9 @@
 //! Runtime-facing provider and streaming pipeline contracts.
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use syllog_proxy::{
-    MockProvider, ModelRequest, ModelRoute, PipelineExecutor, ProviderAdapter, ProviderError,
-    ProviderFuture, Token, TokenSender,
+    CredentialKind, MockProvider, ModelRequest, ModelRoute, PipelineExecutor, ProviderAbiVersion,
+    ProviderAdapter, ProviderDescriptor, ProviderError, ProviderFuture, Token, TokenSender,
 };
 use tokio::sync::Notify;
 use tokio::time::{Duration, timeout};
@@ -59,6 +59,15 @@ struct BurstProvider {
 }
 
 impl ProviderAdapter for BurstProvider {
+    fn descriptor(&self) -> &ProviderDescriptor {
+        static DESCRIPTOR: LazyLock<ProviderDescriptor> = LazyLock::new(|| ProviderDescriptor {
+            name: "burst".into(),
+            abi: ProviderAbiVersion { major: 1, minor: 0 },
+            credentials: CredentialKind::None,
+        });
+        &DESCRIPTOR
+    }
+
     fn stream(&self, _request: ModelRequest, output: TokenSender) -> ProviderFuture<'_> {
         Box::pin(async move {
             output

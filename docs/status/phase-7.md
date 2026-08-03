@@ -22,7 +22,18 @@ yet emit resumable async frames.
 
 ## Gate 7.2 — Versioned provider ABI
 
-Status: not started.
+- [x] Explicit major/minor provider ABI descriptor
+- [x] Incompatible ABI and duplicate registration rejection
+- [x] Immutable registry snapshots and exact route lookup
+- [x] Credential-kind declarations and formatting/JSON-safe secret values
+- [x] Explicit idempotent cancellation with cancellation-safe bounded sinks
+- [x] Ordered provider terminal failures and retained backpressure behavior
+- [ ] Adapter-instance credential capability injection
+
+Known limitation: the ABI declares credential kinds and provides a redacted
+secret container, but actual credential injection belongs to the concrete
+adapter contract in Gate 7.4. No provider secret is currently placed in a model
+request or lifecycle event.
 
 ## Gate 7.3 — Production pipeline executor
 
