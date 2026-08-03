@@ -78,3 +78,17 @@ fn run_rejects_missing_main_and_enforces_fuel_and_memory_policy() {
         assert!(!output.stderr.is_empty());
     }
 }
+
+#[test]
+fn manifest_schema_is_available_as_clean_json() {
+    let output = Command::new(env!("CARGO_BIN_EXE_syllog"))
+        .args(["schema", "manifest"])
+        .output()
+        .expect("schema command should launch");
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let schema: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("schema output should be JSON");
+    assert_eq!(schema["additionalProperties"], false);
+}

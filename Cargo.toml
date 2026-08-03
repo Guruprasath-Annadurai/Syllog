@@ -7,6 +7,7 @@ members = [
     "crates/syllog-ir",
     "crates/syllog-interpreter",
     "crates/syllog-parser",
+    "crates/syllog-project",
     "crates/syllog-proxy",
     "crates/syllog-runtime",
     "crates/syllog-semantic",
@@ -30,6 +31,7 @@ serde_json = "1.0"
 sha2 = "0.10"
 thiserror = "2.0"
 tempfile = "3.23"
+toml = "0.9"
 tokio = { version = "1.47", features = ["macros", "rt-multi-thread", "sync", "time"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

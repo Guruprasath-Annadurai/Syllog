@@ -96,13 +96,27 @@ fn execute(mut args: impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
             }
             commands::run::execute(Path::new(&path), fuel, memory_bytes)
         }
-        "help" | "--help" | "-h" => {
+        "schema" => {
+            let schema = args.next().context("usage: syllog schema manifest")?;
+            if schema != "manifest" {
+                bail!("unknown schema '{schema}'; expected manifest");
+            }
+            if let Some(argument) = args.next() {
+                bail!("unexpected schema argument '{argument}'");
+            }
             println!(
-                "Syllog compiler\n\nUSAGE:\n    syllog check <file.syl> [--json|--diagnostic-format=json]\n    syllog build <file.syl> --target wasm32-syllog --output PATH\n    syllog run <file.syl> [--fuel N] [--memory-bytes N]"
+                "{}",
+                serde_json::to_string_pretty(&syllog_project::manifest_schema())?
             );
             Ok(ExitCode::SUCCESS)
         }
-        other => bail!("unknown command '{other}'; expected check, build, or run"),
+        "help" | "--help" | "-h" => {
+            println!(
+                "Syllog compiler\n\nUSAGE:\n    syllog check <file.syl> [--json|--diagnostic-format=json]\n    syllog build <file.syl> --target wasm32-syllog --output PATH\n    syllog run <file.syl> [--fuel N] [--memory-bytes N]\n    syllog schema manifest"
+            );
+            Ok(ExitCode::SUCCESS)
+        }
+        other => bail!("unknown command '{other}'; expected check, build, run, or schema"),
     }
 }
 
