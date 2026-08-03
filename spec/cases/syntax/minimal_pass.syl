@@ -1,0 +1,3 @@
+fn identity(value: U64) -> U64 {
+    value
+}
