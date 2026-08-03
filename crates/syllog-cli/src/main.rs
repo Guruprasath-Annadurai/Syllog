@@ -34,90 +34,111 @@ fn main() -> ExitCode {
 fn execute(mut args: impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
     let command = args.next().unwrap_or_else(|| "help".to_owned());
     match command.as_str() {
-        "check" => {
-            let path = args
-                .next()
-                .context("usage: syllog check <file.syl> [--json]")?;
-            let mut format = DiagnosticFormat::Human;
-            for argument in args {
-                format = match argument.as_str() {
-                    "--json" | "--diagnostic-format=json" => DiagnosticFormat::Json,
-                    "--diagnostic-format=human" => DiagnosticFormat::Human,
-                    _ => bail!(
-                        "unknown option '{argument}'; expected --json or --diagnostic-format=json"
-                    ),
-                };
-            }
-            check_file(Path::new(&path), format)
-        }
-        "build" => {
-            let path = args
-                .next()
-                .context("usage: syllog build <file.syl> --target wasm32-syllog --output PATH")?;
-            let mut target = None;
-            let mut output = None;
-            while let Some(argument) = args.next() {
-                match argument.as_str() {
-                    "--target" => target = args.next(),
-                    "--output" | "-o" => output = args.next(),
-                    _ => bail!("unknown build option '{argument}'"),
-                }
-            }
-            commands::build::execute(
-                Path::new(&path),
-                target.as_deref().unwrap_or("wasm32-syllog"),
-                Path::new(output.as_deref().context("build requires --output PATH")?),
-            )
-        }
-        "run" => {
-            let path = args
-                .next()
-                .context("usage: syllog run <file.syl> [--fuel N] [--memory-bytes N]")?;
-            let mut fuel = 1_000_000_u64;
-            let mut memory_bytes = 64 * 1024 * 1024_usize;
-            while let Some(argument) = args.next() {
-                match argument.as_str() {
-                    "--fuel" => {
-                        fuel = args
-                            .next()
-                            .context("--fuel requires an integer")?
-                            .parse()
-                            .context("invalid --fuel value")?;
-                    }
-                    "--memory-bytes" => {
-                        memory_bytes = args
-                            .next()
-                            .context("--memory-bytes requires an integer")?
-                            .parse()
-                            .context("invalid --memory-bytes value")?;
-                    }
-                    _ => bail!("unknown run option '{argument}'"),
-                }
-            }
-            commands::run::execute(Path::new(&path), fuel, memory_bytes)
-        }
-        "schema" => {
-            let schema = args.next().context("usage: syllog schema manifest")?;
-            if schema != "manifest" {
-                bail!("unknown schema '{schema}'; expected manifest");
-            }
-            if let Some(argument) = args.next() {
-                bail!("unexpected schema argument '{argument}'");
-            }
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&syllog_project::manifest_schema())?
-            );
-            Ok(ExitCode::SUCCESS)
-        }
+        "check" => execute_check(&mut args),
+        "build" => execute_build(&mut args),
+        "run" => execute_run(&mut args),
+        "schema" => execute_schema(&mut args),
+        "new" => execute_new(&mut args),
         "help" | "--help" | "-h" => {
             println!(
-                "Syllog compiler\n\nUSAGE:\n    syllog check <file.syl> [--json|--diagnostic-format=json]\n    syllog build <file.syl> --target wasm32-syllog --output PATH\n    syllog run <file.syl> [--fuel N] [--memory-bytes N]\n    syllog schema manifest"
+                "Syllog compiler\n\nUSAGE:\n    syllog new NAME [--template basic|agent|native]\n    syllog check <file.syl> [--json|--diagnostic-format=json]\n    syllog build <file.syl> --target wasm32-syllog --output PATH\n    syllog run <file.syl> [--fuel N] [--memory-bytes N]\n    syllog schema manifest"
             );
             Ok(ExitCode::SUCCESS)
         }
-        other => bail!("unknown command '{other}'; expected check, build, run, or schema"),
+        other => bail!("unknown command '{other}'; expected new, check, build, run, or schema"),
     }
+}
+
+fn execute_check(args: &mut impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
+    let path = args
+        .next()
+        .context("usage: syllog check <file.syl> [--json]")?;
+    let mut format = DiagnosticFormat::Human;
+    for argument in args {
+        format = match argument.as_str() {
+            "--json" | "--diagnostic-format=json" => DiagnosticFormat::Json,
+            "--diagnostic-format=human" => DiagnosticFormat::Human,
+            _ => bail!("unknown option '{argument}'; expected --json or --diagnostic-format=json"),
+        };
+    }
+    check_file(Path::new(&path), format)
+}
+
+fn execute_build(args: &mut impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
+    let path = args
+        .next()
+        .context("usage: syllog build <file.syl> --target wasm32-syllog --output PATH")?;
+    let mut target = None;
+    let mut output = None;
+    while let Some(argument) = args.next() {
+        match argument.as_str() {
+            "--target" => target = args.next(),
+            "--output" | "-o" => output = args.next(),
+            _ => bail!("unknown build option '{argument}'"),
+        }
+    }
+    commands::build::execute(
+        Path::new(&path),
+        target.as_deref().unwrap_or("wasm32-syllog"),
+        Path::new(output.as_deref().context("build requires --output PATH")?),
+    )
+}
+
+fn execute_run(args: &mut impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
+    let path = args
+        .next()
+        .context("usage: syllog run <file.syl> [--fuel N] [--memory-bytes N]")?;
+    let mut fuel = 1_000_000_u64;
+    let mut memory_bytes = 64 * 1024 * 1024_usize;
+    while let Some(argument) = args.next() {
+        match argument.as_str() {
+            "--fuel" => {
+                fuel = args
+                    .next()
+                    .context("--fuel requires an integer")?
+                    .parse()
+                    .context("invalid --fuel value")?;
+            }
+            "--memory-bytes" => {
+                memory_bytes = args
+                    .next()
+                    .context("--memory-bytes requires an integer")?
+                    .parse()
+                    .context("invalid --memory-bytes value")?;
+            }
+            _ => bail!("unknown run option '{argument}'"),
+        }
+    }
+    commands::run::execute(Path::new(&path), fuel, memory_bytes)
+}
+
+fn execute_schema(args: &mut impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
+    let schema = args.next().context("usage: syllog schema manifest")?;
+    if schema != "manifest" {
+        bail!("unknown schema '{schema}'; expected manifest");
+    }
+    if let Some(argument) = args.next() {
+        bail!("unexpected schema argument '{argument}'");
+    }
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&syllog_project::manifest_schema())?
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+fn execute_new(args: &mut impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
+    let name = args
+        .next()
+        .context("usage: syllog new NAME [--template basic|agent|native]")?;
+    let mut template = "basic".to_owned();
+    while let Some(argument) = args.next() {
+        match argument.as_str() {
+            "--template" => template = args.next().context("--template requires a name")?,
+            _ => bail!("unknown new option '{argument}'"),
+        }
+    }
+    commands::new::execute(&env::current_dir()?, &name, &template)
 }
 
 fn check_file(path: &Path, format: DiagnosticFormat) -> anyhow::Result<ExitCode> {

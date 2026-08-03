@@ -1,6 +1,7 @@
 //! CLI compilation commands sharing the production compiler pipeline.
 
 pub mod build;
+pub mod new;
 pub mod run;
 
 use std::fs;
