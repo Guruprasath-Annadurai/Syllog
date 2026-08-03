@@ -907,6 +907,7 @@ name = "syllog-semantic"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "sha2",
  "syllog-parser",
 ]
 

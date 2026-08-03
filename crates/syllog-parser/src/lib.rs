@@ -44,12 +44,38 @@ pub fn parse_syl(input: &str) -> anyhow::Result<Ast> {
 
 fn lower_program(program: Pair<'_, Rule>) -> anyhow::Result<Ast> {
     let span = pair_span(&program);
-    let items = program
-        .into_inner()
-        .filter(|pair| pair.as_rule() != Rule::EOI)
-        .map(parse_item)
-        .collect::<anyhow::Result<Vec<_>>>()?;
-    Ok(Ast { items, span })
+    let mut module = None;
+    let mut imports = Vec::new();
+    let mut items = Vec::new();
+    for pair in program.into_inner() {
+        match pair.as_rule() {
+            Rule::module_decl => module = Some(parse_module(pair)?),
+            Rule::use_decl => imports.push(parse_use(pair)?),
+            Rule::EOI => {}
+            _ => items.push(parse_item(pair)?),
+        }
+    }
+    Ok(Ast {
+        module,
+        imports,
+        items,
+        span,
+    })
+}
+
+fn parse_module(pair: Pair<'_, Rule>) -> anyhow::Result<ModuleNode> {
+    let span = pair_span(&pair);
+    let mut parts = meaningful_inner(pair);
+    let path = parse_path(pop_front(&mut parts, "module path")?)?;
+    Ok(ModuleNode { path, span })
+}
+
+fn parse_use(pair: Pair<'_, Rule>) -> anyhow::Result<UseNode> {
+    let span = pair_span(&pair);
+    let mut parts = meaningful_inner(pair);
+    let path = parse_path(pop_front(&mut parts, "import path")?)?;
+    let alias = parts.pop_front().map(|pair| pair.as_str().to_owned());
+    Ok(UseNode { path, alias, span })
 }
 
 /// Parses and validates one named Syllog source file.
@@ -725,6 +751,9 @@ fn is_keyword(rule: Rule) -> bool {
             | Rule::kw_return
             | Rule::kw_match
             | Rule::kw_if
+            | Rule::kw_module
+            | Rule::kw_use
+            | Rule::kw_as
     )
 }
 

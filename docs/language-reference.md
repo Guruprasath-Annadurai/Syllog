@@ -367,8 +367,11 @@ The current Pest front end accepts the following implemented subset and attaches
 an exact byte/line/column span to every structural AST node:
 
 ```ebnf
-program = { struct-decl | enum-decl | function-decl | state-decl
+program = [ module-decl ] , { use-decl }
+        , { struct-decl | enum-decl | function-decl | state-decl
         | agent-decl | pipeline-decl | safety-bound-decl } ;
+module-decl = "module" , path , ";" ;
+use-decl = "use" , path , [ "as" , identifier ] , ";" ;
 struct-decl = [ "pub" ] , "struct" , identifier , "{" , { struct-field } , "}" ;
 enum-decl = [ "pub" ] , "enum" , identifier , "{" , { enum-variant } , "}" ;
 function-decl = [ "pub" ] , [ "async" ] , "fn" , identifier
@@ -416,6 +419,7 @@ diagnostic behavior follows the compatibility policy in §15.
 | `SYL-PIPELINE-CONTRACT-001` | A typed pipeline input and output are compatible with the selected typed agent; failures emit `SYL2201`. |
 | `SYL-SAFETY-REQUIRED-001` | A safety bound contains at least one `require` or `policy` property; omission emits `SYL1002`. |
 | `SYL-RUNTIME-ENTRY-001` | A well-typed executable `main` returns a deterministic `()`/integer process result; incompatible return values emit `SYL2101`. |
+| `SYL-MODULE-SYNTAX-001` | A project source may declare one leading module path followed by imports with optional aliases; malformed declarations emit `SYL0001`. |
 
 ## 15. Diagnostics, profiles, and security
 

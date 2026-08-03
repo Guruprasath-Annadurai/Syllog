@@ -1,0 +1,6 @@
+module application;
+use shared::answer as imported_answer;
+
+fn main() -> I64 {
+    0
+}

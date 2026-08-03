@@ -1,7 +1,9 @@
 //! Static semantic analysis for Syllog.
 
+mod modules;
 mod types;
 
+pub use modules::*;
 pub use types::*;
 
 use serde::{Deserialize, Serialize};
@@ -63,6 +65,25 @@ struct Analyzer<'a> {
 pub fn analyze(file: &str, ast: &Ast) -> Analysis {
     let mut analyzer = Analyzer::new(file, ast);
     analyzer.collect_declarations();
+    analyzer.resolve_declarations();
+    analyzer.check_bodies();
+    Analysis {
+        symbols: analyzer.symbols,
+        diagnostics: analyzer.diagnostics,
+        expression_types: analyzer
+            .expression_types
+            .into_iter()
+            .map(|(span, ty)| ExpressionType { span, ty })
+            .collect(),
+    }
+}
+
+fn analyze_with_imports(file: &str, ast: &Ast, imports: &[(&str, &Item)]) -> Analysis {
+    let mut analyzer = Analyzer::new(file, ast);
+    analyzer.collect_declarations();
+    for (alias, item) in imports {
+        analyzer.install_import(alias, item);
+    }
     analyzer.resolve_declarations();
     analyzer.check_bodies();
     Analysis {
@@ -144,6 +165,73 @@ impl<'a> Analyzer<'a> {
                 Item::SafetyBound(node) => {
                     self.insert_value(&node.name, ValueSymbolKind::SafetyBound, node.span);
                 }
+            }
+        }
+    }
+
+    fn install_import(&mut self, alias: &str, item: &Item) {
+        match item {
+            Item::Struct(node) => {
+                self.insert_type(alias, TypeSymbolKind::Struct, node.span);
+                let fields = node
+                    .fields
+                    .iter()
+                    .map(|field| (field.name.clone(), self.resolve_type(&field.ty)))
+                    .collect();
+                self.structs
+                    .insert(alias.to_owned(), StructDefinition { fields });
+            }
+            Item::Enum(node) => {
+                self.insert_type(alias, TypeSymbolKind::Enum, node.span);
+                let variants = node
+                    .variants
+                    .iter()
+                    .map(|variant| {
+                        (
+                            variant.name.clone(),
+                            variant
+                                .fields
+                                .iter()
+                                .map(|field| self.resolve_type(field))
+                                .collect(),
+                        )
+                    })
+                    .collect();
+                self.enums
+                    .insert(alias.to_owned(), EnumDefinition { variants });
+            }
+            Item::Function(node) => {
+                self.insert_value(alias, ValueSymbolKind::Function, node.span);
+                let parameters = node
+                    .parameters
+                    .iter()
+                    .map(|parameter| self.resolve_type(&parameter.ty))
+                    .collect();
+                let result = node
+                    .return_type
+                    .as_ref()
+                    .map_or(ResolvedType::Unit, |ty| self.resolve_type(ty));
+                self.functions
+                    .insert(alias.to_owned(), FunctionSignature { parameters, result });
+            }
+            Item::State(node) => {
+                self.insert_type(alias, TypeSymbolKind::State, node.span);
+                let fields = node
+                    .fields
+                    .iter()
+                    .map(|field| self.resolve_type(&field.ty))
+                    .collect();
+                self.states.insert(alias.to_owned(), fields);
+            }
+            Item::Agent(node) => {
+                self.insert_value(alias, ValueSymbolKind::Agent, node.span);
+                self.agents.entry(alias.to_owned()).or_default();
+            }
+            Item::Pipeline(node) => {
+                self.insert_value(alias, ValueSymbolKind::Pipeline, node.span);
+            }
+            Item::SafetyBound(node) => {
+                self.insert_value(alias, ValueSymbolKind::SafetyBound, node.span);
             }
         }
     }

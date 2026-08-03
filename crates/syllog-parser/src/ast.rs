@@ -24,9 +24,33 @@ pub struct Span {
 /// A complete Syllog source file.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Ast {
+    /// Declared logical module, when this is a project source file.
+    pub module: Option<ModuleNode>,
+    /// Imports declared before top-level items.
+    pub imports: Vec<UseNode>,
     /// Top-level declarations in source order.
     pub items: Vec<Item>,
     /// Span covering the complete compilation unit.
+    pub span: Span,
+}
+
+/// Logical module declaration for a project source file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleNode {
+    /// Qualified module path segments.
+    pub path: Vec<String>,
+    /// Full declaration range.
+    pub span: Span,
+}
+
+/// One imported definition with an optional local alias.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UseNode {
+    /// Qualified path ending in the imported definition name.
+    pub path: Vec<String>,
+    /// Explicit local alias, when present.
+    pub alias: Option<String>,
+    /// Full import range.
     pub span: Span,
 }
 

@@ -3,7 +3,9 @@ COMMENT = _{ line_comment | block_comment }
 line_comment = _{ "//" ~ (!NEWLINE ~ ANY)* ~ (NEWLINE | EOI) }
 block_comment = _{ "/*" ~ (block_comment | !("/*" | "*/") ~ ANY)* ~ "*/" }
 
-program = { SOI ~ item* ~ EOI }
+program = { SOI ~ module_decl? ~ use_decl* ~ item* ~ EOI }
+module_decl = { kw_module ~ path ~ separator }
+use_decl = { kw_use ~ path ~ (kw_as ~ identifier)? ~ separator }
 item = _{
       struct_decl
     | enum_decl
@@ -131,3 +133,6 @@ kw_let = @{ "let" ~ !ident_continue }
 kw_return = @{ "return" ~ !ident_continue }
 kw_match = @{ "match" ~ !ident_continue }
 kw_if = @{ "if" ~ !ident_continue }
+kw_module = @{ "module" ~ !ident_continue }
+kw_use = @{ "use" ~ !ident_continue }
+kw_as = @{ "as" ~ !ident_continue }
