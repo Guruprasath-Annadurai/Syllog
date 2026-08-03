@@ -1,7 +1,9 @@
 //! WebAssembly isolation boundary used by future `evo` execution.
 
+mod pipeline;
 mod task;
 
+pub use pipeline::*;
 pub use task::*;
 
 use anyhow::Context;

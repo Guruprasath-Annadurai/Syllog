@@ -37,7 +37,20 @@ request or lifecycle event.
 
 ## Gate 7.3 — Production pipeline executor
 
-Status: not started.
+- [x] Serial stage execution
+- [x] Measured bounded fan-out and structured child joins
+- [x] Declaration-order and completion-order join policies
+- [x] Paused-time retry backoff and total stage deadlines
+- [x] Shared threshold/reset circuit breaker
+- [x] Cooperative cancellation waits for child cleanup
+- [x] Successful lifecycle logs exclude pipeline payloads
+- [ ] Failure results retain their accumulated lifecycle log
+- [ ] Forced cancellation grace period and explicit detached supervisor
+
+Known limitation: stage cancellation is cooperative through `StageContext`; a
+stage that ignores cancellation must have a deadline to guarantee termination.
+Successful outcomes retain ordered lifecycle events, but current error returns
+contain only the normalized error, so failure-event retention is not claimed.
 
 ## Gate 7.4 — Provider adapters
 
