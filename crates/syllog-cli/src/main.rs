@@ -42,18 +42,47 @@ fn execute(mut args: impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
         "inspect" => execute_inspect(&mut args),
         "schema" => execute_schema(&mut args),
         "new" => execute_new(&mut args),
+        "add" => execute_add(&mut args),
+        "vendor" => execute_vendor(&mut args),
+        "publish" => execute_publish(&mut args),
         "help" | "--help" | "-h" => {
             println!(
-                "Syllog compiler\n\nUSAGE:\n    syllog new NAME [--template basic|agent|native]\n    syllog check <file.syl> [--json|--diagnostic-format=json]\n    syllog dev [--json-events] [--once]\n    syllog test [--json]\n    syllog inspect project|hir|capabilities [--json]\n    syllog build <file.syl> --target wasm32-syllog --output PATH\n    syllog run <file.syl> [--fuel N] [--memory-bytes N]\n    syllog schema manifest"
+                "Syllog compiler\n\nUSAGE:\n    syllog new NAME [--template basic|agent|native]\n    syllog add NAME@RANGE\n    syllog vendor\n    syllog publish --dry-run\n    syllog check <file.syl> [--json|--diagnostic-format=json]\n    syllog dev [--json-events] [--once]\n    syllog test [--json]\n    syllog inspect project|hir|capabilities [--json]\n    syllog build <file.syl> --target wasm32-syllog --output PATH\n    syllog run <file.syl> [--fuel N] [--memory-bytes N]\n    syllog schema manifest"
             );
             Ok(ExitCode::SUCCESS)
         }
         other => {
             bail!(
-                "unknown command '{other}'; expected new, check, dev, test, inspect, build, run, or schema"
+                "unknown command '{other}'; expected new, add, vendor, publish, check, dev, test, inspect, build, run, or schema"
             )
         }
     }
+}
+
+fn execute_add(args: &mut impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
+    let specification = args.next().context("usage: syllog add NAME@RANGE")?;
+    if let Some(argument) = args.next() {
+        bail!("unexpected add argument '{argument}'");
+    }
+    commands::add::execute(&env::current_dir()?, &specification)
+}
+
+fn execute_vendor(args: &mut impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
+    if let Some(argument) = args.next() {
+        bail!("unexpected vendor argument '{argument}'");
+    }
+    commands::vendor::execute(&env::current_dir()?)
+}
+
+fn execute_publish(args: &mut impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
+    let dry_run = args.next().is_some_and(|argument| argument == "--dry-run");
+    if !dry_run {
+        bail!("publishing requires --dry-run in this bootstrap client");
+    }
+    if let Some(argument) = args.next() {
+        bail!("unexpected publish argument '{argument}'");
+    }
+    commands::publish::execute(&env::current_dir()?)
 }
 
 fn execute_test(args: &mut impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {

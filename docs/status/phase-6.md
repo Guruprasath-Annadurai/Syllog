@@ -57,14 +57,18 @@ an explicit token parameter.
 
 ## Gate 6.4 — Registry workflows
 
-- [ ] Versioned local registry contract
-- [ ] Signed publisher identity and immutable releases
-- [ ] `syllog add`
-- [ ] `syllog vendor`
-- [ ] `syllog publish --dry-run`
+- [x] Versioned no-network local registry contract
+- [x] Ed25519 publisher identity, namespace authorization, replay defense, and immutable releases
+- [x] Atomic, comment-preserving `syllog add NAME@RANGE`
+- [x] Checksum-verified offline `syllog vendor`
+- [x] Deterministic `syllog publish --dry-run`
 - [ ] Offline rebuild from cache and vendor directory
 
-Status: not started.
+Checkpoint evidence: 6 registry security contracts and 3 end-to-end CLI
+workflow tests pass under strict Clippy. Missing by design at this checkpoint:
+network transport, resumable download, provenance upload, non-dry-run CLI
+publication, and compiler linking of vendored packages. Those items remain open;
+the registry gate and Phase 6 exit gate are not satisfied.
 
 ## Phase 6 exit gate
 

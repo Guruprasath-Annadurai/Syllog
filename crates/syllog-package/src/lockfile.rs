@@ -14,6 +14,9 @@ pub enum LockfileError {
     /// Canonical TOML serialization failed.
     #[error("could not serialize lockfile: {0}")]
     Serialize(#[from] toml::ser::Error),
+    /// Existing lockfile syntax or schema was invalid.
+    #[error("could not parse lockfile: {0}")]
+    Deserialize(#[from] toml::de::Error),
     /// A filesystem operation failed.
     #[error("could not write lockfile '{}': {source}", path.display())]
     Io {
@@ -23,6 +26,19 @@ pub enum LockfileError {
         #[source]
         source: std::io::Error,
     },
+}
+
+/// Reads a generated lockfile.
+///
+/// # Errors
+///
+/// Returns an error for I/O, syntax, or schema failures.
+pub fn read_lockfile(path: &Path) -> Result<Resolution, LockfileError> {
+    let text = std::fs::read_to_string(path).map_err(|source| LockfileError::Io {
+        path: path.to_owned(),
+        source,
+    })?;
+    Ok(toml::from_str(&text)?)
 }
 
 /// Serializes a resolution into canonical UTF-8 lockfile bytes.

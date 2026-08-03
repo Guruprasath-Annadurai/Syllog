@@ -16,19 +16,23 @@ path = "src/main.rs"
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+semver.workspace = true
 syllog-codegen-wasm = { path = "../syllog-codegen-wasm", version = "0.1.0" }
 syllog-compiler = { path = "../syllog-compiler", version = "0.1.0" }
 syllog-dev-server = { path = "../syllog-dev-server", version = "0.1.0" }
 syllog-ir = { path = "../syllog-ir", version = "0.1.0" }
 syllog-interpreter = { path = "../syllog-interpreter", version = "0.1.0" }
 syllog-parser = { path = "../syllog-parser", version = "0.1.0" }
+syllog-package = { path = "../syllog-package", version = "0.1.0" }
 syllog-project = { path = "../syllog-project", version = "0.1.0" }
+syllog-registry-client = { path = "../syllog-registry-client", version = "0.1.0" }
 syllog-runtime = { path = "../syllog-runtime", version = "0.1.0" }
 syllog-semantic = { path = "../syllog-semantic", version = "0.1.0" }
 tempfile.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+toml_edit.workspace = true
 
 [lints]
 workspace = true

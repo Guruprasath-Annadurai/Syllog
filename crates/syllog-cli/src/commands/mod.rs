@@ -1,11 +1,14 @@
 //! CLI compilation commands sharing the production compiler pipeline.
 
+pub mod add;
 pub mod build;
 pub mod dev;
 pub mod inspect;
 pub mod new;
+pub mod publish;
 pub mod run;
 pub mod test;
+pub mod vendor;
 
 use std::fs;
 use std::path::Path;

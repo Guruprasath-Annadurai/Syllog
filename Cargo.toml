@@ -11,6 +11,7 @@ members = [
     "crates/syllog-package",
     "crates/syllog-project",
     "crates/syllog-proxy",
+    "crates/syllog-registry-client",
     "crates/syllog-runtime",
     "crates/syllog-semantic",
     "crates/syllog-spec-tests",
@@ -26,6 +27,7 @@ rust-version = "1.85"
 
 [workspace.dependencies]
 anyhow = "1.0"
+ed25519-dalek = "2.2"
 pest = "2.8"
 pest_derive = "2.8"
 serde = { version = "1.0", features = ["derive"] }
@@ -35,6 +37,7 @@ sha2 = "0.10"
 thiserror = "2.0"
 tempfile = "3.23"
 toml = "0.9"
+toml_edit = "0.23"
 tokio = { version = "1.47", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
