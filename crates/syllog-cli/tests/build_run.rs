@@ -92,3 +92,74 @@ fn manifest_schema_is_available_as_clean_json() {
         serde_json::from_slice(&output.stdout).expect("schema output should be JSON");
     assert_eq!(schema["additionalProperties"], false);
 }
+
+#[test]
+fn project_build_and_run_compile_the_complete_module_tree() {
+    let directory = tempfile::tempdir().expect("temporary project should exist");
+    std::fs::create_dir(directory.path().join("src")).unwrap();
+    std::fs::write(
+        directory.path().join("Syllog.toml"),
+        r#"[package]
+name = "multi-module"
+version = "0.1.0"
+edition = "2026"
+
+[[targets]]
+name = "multi-module"
+kind = "bin"
+path = "src/main.syl"
+
+[capabilities]
+profile = "none"
+max_memory_bytes = 65536
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        directory.path().join("src/math.syl"),
+        "module math;\npub fn answer() -> I64 { 42 }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        directory.path().join("src/main.syl"),
+        "module app;\nuse math::answer;\nfn main() -> I64 { twice(answer()) }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        directory.path().join("src/helper.syl"),
+        "module app;\npub fn twice(value: I64) -> I64 { value + value }\n",
+    )
+    .unwrap();
+    let artifact = directory.path().join("target/app.wasm");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_syllog"))
+        .current_dir(directory.path())
+        .args([
+            "build",
+            ".",
+            "--target",
+            "wasm32-syllog",
+            "--output",
+            artifact.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        build.status.success(),
+        "{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    assert_eq!(&std::fs::read(&artifact).unwrap()[..4], b"\0asm");
+
+    let run = Command::new(env!("CARGO_BIN_EXE_syllog"))
+        .current_dir(directory.path())
+        .args(["run", ".", "--memory-bytes", "65536"])
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(run.stdout, b"84\n");
+}

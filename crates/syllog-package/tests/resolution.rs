@@ -240,6 +240,48 @@ fn lockfile_is_written_atomically_with_canonical_bytes() {
 }
 
 #[test]
+fn large_dependency_graph_resolves_deterministically_without_branch_explosion() {
+    let package_count = 300;
+    let mut releases = Vec::new();
+    for index in 0..package_count {
+        let name = format!("package-{index:03}");
+        let dependency_name = format!("package-{:03}", index + 1);
+        for minor in 0..4 {
+            let version = format!("1.{minor}.0");
+            let dependencies = if index + 1 == package_count {
+                Vec::new()
+            } else {
+                vec![(dependency_name.as_str(), "^1")]
+            };
+            releases.push(release(&name, &version, &dependencies));
+        }
+    }
+    let index = InMemoryIndex::new(releases);
+
+    let first = resolve(
+        &manifest(&[("package-000", "^1")]),
+        &index,
+        ResolvePolicy::default(),
+    )
+    .unwrap();
+    let second = resolve(
+        &manifest(&[("package-000", "^1")]),
+        &index,
+        ResolvePolicy::default(),
+    )
+    .unwrap();
+
+    assert_eq!(first, second);
+    assert_eq!(first.packages.len(), package_count);
+    assert!(
+        first
+            .packages
+            .iter()
+            .all(|package| package.version == Version::new(1, 3, 0))
+    );
+}
+
+#[test]
 fn content_cache_is_immutable_verified_and_path_safe() {
     let directory = tempfile::tempdir().unwrap();
     let cache = ContentAddressedCache::new(directory.path());

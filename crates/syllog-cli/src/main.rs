@@ -44,16 +44,17 @@ fn execute(mut args: impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
         "new" => execute_new(&mut args),
         "add" => execute_add(&mut args),
         "vendor" => execute_vendor(&mut args),
+        "fetch" => execute_fetch(&mut args),
         "publish" => execute_publish(&mut args),
         "help" | "--help" | "-h" => {
             println!(
-                "Syllog compiler\n\nUSAGE:\n    syllog new NAME [--template basic|agent|native]\n    syllog add NAME@RANGE\n    syllog vendor\n    syllog publish --dry-run\n    syllog check <file.syl> [--json|--diagnostic-format=json]\n    syllog dev [--json-events] [--once]\n    syllog test [--json]\n    syllog inspect project|hir|capabilities [--json]\n    syllog build <file.syl> --target wasm32-syllog --output PATH\n    syllog run <file.syl> [--fuel N] [--memory-bytes N]\n    syllog schema manifest"
+                "Syllog compiler\n\nUSAGE:\n    syllog new NAME [--template basic|agent|native]\n    syllog add NAME@RANGE\n    syllog fetch --registry URL\n    syllog vendor\n    syllog publish --dry-run\n    syllog publish --registry URL --nonce VALUE --source-revision ID\n    syllog check <file.syl> [--json|--diagnostic-format=json]\n    syllog dev [--json-events] [--once]\n    syllog test [--json]\n    syllog inspect project|hir|capabilities [--json]\n    syllog build <file.syl|project> --target wasm32-syllog --output PATH\n    syllog run <file.syl|project> [--fuel N] [--memory-bytes N]\n    syllog schema manifest"
             );
             Ok(ExitCode::SUCCESS)
         }
         other => {
             bail!(
-                "unknown command '{other}'; expected new, add, vendor, publish, check, dev, test, inspect, build, run, or schema"
+                "unknown command '{other}'; expected new, add, fetch, vendor, publish, check, dev, test, inspect, build, run, or schema"
             )
         }
     }
@@ -74,15 +75,75 @@ fn execute_vendor(args: &mut impl Iterator<Item = String>) -> anyhow::Result<Exi
     commands::vendor::execute(&env::current_dir()?)
 }
 
+fn execute_fetch(args: &mut impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
+    let mut registry = None;
+    while let Some(argument) = args.next() {
+        match argument.as_str() {
+            "--registry" => registry = args.next(),
+            _ => bail!("unexpected fetch argument '{argument}'"),
+        }
+    }
+    let registry = registry.context("fetch requires --registry URL")?;
+    let token =
+        env::var("SYLLOG_REGISTRY_TOKEN").context("fetch requires SYLLOG_REGISTRY_TOKEN")?;
+    tokio::runtime::Runtime::new()?.block_on(commands::fetch::execute(
+        &env::current_dir()?,
+        &registry,
+        token,
+    ))
+}
+
 fn execute_publish(args: &mut impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
-    let dry_run = args.next().is_some_and(|argument| argument == "--dry-run");
-    if !dry_run {
-        bail!("publishing requires --dry-run in this bootstrap client");
+    let mut dry_run = false;
+    let mut registry = None;
+    let mut nonce = None;
+    let mut source_revision = None;
+    while let Some(argument) = args.next() {
+        match argument.as_str() {
+            "--dry-run" => dry_run = true,
+            "--registry" => registry = args.next(),
+            "--nonce" => nonce = args.next(),
+            "--source-revision" => source_revision = args.next(),
+            _ => bail!("unexpected publish argument '{argument}'"),
+        }
     }
-    if let Some(argument) = args.next() {
-        bail!("unexpected publish argument '{argument}'");
+    if dry_run {
+        if registry.is_some() || nonce.is_some() || source_revision.is_some() {
+            bail!("--dry-run cannot be combined with network publication options");
+        }
+        return commands::publish::execute(&env::current_dir()?);
     }
-    commands::publish::execute(&env::current_dir()?)
+    let registry = registry.context("publish requires --registry URL or --dry-run")?;
+    let nonce = nonce.context("network publish requires --nonce VALUE")?;
+    let source_revision =
+        source_revision.context("network publish requires --source-revision ID")?;
+    let token = env::var("SYLLOG_REGISTRY_TOKEN")
+        .context("network publish requires SYLLOG_REGISTRY_TOKEN")?;
+    let seed = parse_seed(
+        &env::var("SYLLOG_PUBLISHER_SEED_HEX")
+            .context("network publish requires SYLLOG_PUBLISHER_SEED_HEX")?,
+    )?;
+    tokio::runtime::Runtime::new()?.block_on(commands::publish::execute_remote(
+        &env::current_dir()?,
+        &registry,
+        &nonce,
+        &source_revision,
+        token,
+        seed,
+    ))
+}
+
+fn parse_seed(encoded: &str) -> anyhow::Result<[u8; 32]> {
+    if encoded.len() != 64 || !encoded.is_ascii() {
+        bail!("SYLLOG_PUBLISHER_SEED_HEX must contain exactly 64 hexadecimal characters");
+    }
+    let mut seed = [0; 32];
+    for (index, slot) in seed.iter_mut().enumerate() {
+        let start = index * 2;
+        *slot = u8::from_str_radix(&encoded[start..start + 2], 16)
+            .context("SYLLOG_PUBLISHER_SEED_HEX contains non-hexadecimal characters")?;
+    }
+    Ok(seed)
 }
 
 fn execute_test(args: &mut impl Iterator<Item = String>) -> anyhow::Result<ExitCode> {
@@ -247,4 +308,16 @@ fn check_file(path: &Path, format: DiagnosticFormat) -> anyhow::Result<ExitCode>
     } else {
         ExitCode::FAILURE
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_seed;
+
+    #[test]
+    fn publisher_seed_rejects_non_ascii_without_panicking() {
+        let encoded = "é".repeat(32);
+        let error = parse_seed(&encoded).unwrap_err();
+        assert!(error.to_string().contains("64 hexadecimal characters"));
+    }
 }

@@ -11,6 +11,10 @@ use syllog_registry_client::PackageArchive;
 pub fn execute(start: &Path) -> anyhow::Result<ExitCode> {
     let project = syllog_project::discover(start).context("could not discover Syllog project")?;
     let resolution = read_lockfile(&project.root.join("Syllog.lock"))?;
+    if resolution.format != 1 {
+        bail!("unsupported Syllog.lock format {}", resolution.format);
+    }
+    super::validate_lock_graph(&project, &resolution)?;
     let cache = ContentAddressedCache::new(project.root.join(".syllog/cache"));
     let destination = project.root.join("vendor");
     if destination.exists() {
@@ -31,9 +35,12 @@ pub fn execute(start: &Path) -> anyhow::Result<ExitCode> {
                 package.name
             );
         }
+        super::verify_locked_archive(package, &archive)?;
         let root = staging
             .path()
             .join(format!("{}-{}", package.name, package.version));
+        std::fs::create_dir_all(&root)?;
+        std::fs::write(root.join(".syllog-package"), &bytes)?;
         for file in archive.files {
             let path = root.join(&file.path);
             std::fs::create_dir_all(path.parent().context("archive path has no parent")?)?;

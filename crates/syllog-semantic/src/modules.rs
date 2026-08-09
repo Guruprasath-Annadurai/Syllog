@@ -244,6 +244,20 @@ fn analyze_source_bodies(
                     .get(&import.definition)
                     .map(|item| (import.local_name.as_str(), *item))
             })
+            .chain(module.definitions.values().filter_map(|definition| {
+                if definition.file == source.file
+                    || source
+                        .ast
+                        .items
+                        .iter()
+                        .any(|item| item_identity(item).0 == definition.name)
+                {
+                    return None;
+                }
+                items
+                    .get(&definition.id)
+                    .map(|item| (definition.name.as_str(), *item))
+            }))
             .collect::<Vec<_>>();
         analyses.insert(
             source.file.clone(),

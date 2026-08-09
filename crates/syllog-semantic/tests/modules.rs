@@ -177,3 +177,82 @@ fn public_interface_hash_is_independent_of_source_layout() {
         expanded.module("api").unwrap().interface_hash
     );
 }
+
+#[test]
+fn imported_agent_contracts_are_enforced_in_pipeline_modules() {
+    let agents = source(
+        "src/agents.syl",
+        r#"module agents;
+pub agent summarizer {
+    provider: openai(model: "gpt-5")
+    input: String = request
+    output: String = response
+}
+"#,
+    );
+    let valid = source(
+        "src/valid.syl",
+        r"module valid;
+use agents::summarizer as model;
+pipeline summarize(input: String) -> String {
+    agent: AgentRef = model
+    result: String = input
+}
+",
+    );
+
+    let valid_analysis = analyze_modules(vec![agents.clone(), valid]);
+    assert!(
+        valid_analysis.diagnostics.is_empty(),
+        "{:#?}",
+        valid_analysis.diagnostics
+    );
+
+    let invalid = source(
+        "src/invalid.syl",
+        r#"module invalid;
+use agents::summarizer as model;
+pipeline summarize(input: U64) -> String {
+    agent: AgentRef = model
+    result: String = "invalid"
+}
+"#,
+    );
+    let invalid_analysis = analyze_modules(vec![agents, invalid]);
+    assert!(invalid_analysis.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "SYL2201"
+            && diagnostic.file == "src/invalid.syl"
+            && diagnostic.message.contains("pipeline input")
+    }));
+}
+
+#[test]
+fn imported_pipeline_signatures_type_check_at_call_sites() {
+    let workflow = source(
+        "src/workflow.syl",
+        r#"module workflow;
+pub agent model {
+    provider: openai(model: "gpt-5")
+    input: String = request
+    output: String = response
+}
+pub pipeline summarize(input: String) -> String {
+    agent: AgentRef = model
+    result: String = input
+}
+"#,
+    );
+    let app = source(
+        "src/app.syl",
+        "module app;\nuse workflow::summarize;\nfn use_pipeline() -> String { summarize(7) }\n",
+    );
+
+    let analysis = analyze_modules(vec![workflow, app]);
+
+    assert!(analysis.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "SYL2101"
+            && diagnostic.file == "src/app.syl"
+            && diagnostic.message.contains("argument")
+            && diagnostic.message.contains("String")
+    }));
+}

@@ -44,6 +44,17 @@ pub fn lower_to_hir(ast: &Ast, symbols: &SymbolTable) -> Result<HirProgram, Vec<
     Lowerer::new(ast, &analysis).lower()
 }
 
+pub(crate) fn lower_module_to_hir(
+    ast: &Ast,
+    analysis: &Analysis,
+    module: ModuleId,
+    globals: BTreeMap<String, DefId>,
+    members: BTreeMap<String, DefId>,
+    next_definition: u32,
+) -> Result<(HirModule, Option<DefId>, u32), Vec<Diagnostic>> {
+    Lowerer::new_planned(ast, analysis, module, globals, members, next_definition).lower_module()
+}
+
 struct Lowerer<'a> {
     ast: &'a Ast,
     analysis: &'a Analysis,
@@ -52,6 +63,7 @@ struct Lowerer<'a> {
     members: BTreeMap<String, DefId>,
     expression_types: BTreeMap<Span, ResolvedType>,
     diagnostics: Vec<Diagnostic>,
+    module: ModuleId,
 }
 
 impl<'a> Lowerer<'a> {
@@ -69,10 +81,45 @@ impl<'a> Lowerer<'a> {
             members: BTreeMap::new(),
             expression_types,
             diagnostics: Vec::new(),
+            module: SOURCE_MODULE,
         }
     }
 
-    fn lower(mut self) -> Result<HirProgram, Vec<Diagnostic>> {
+    fn new_planned(
+        ast: &'a Ast,
+        analysis: &'a Analysis,
+        module: ModuleId,
+        globals: BTreeMap<String, DefId>,
+        members: BTreeMap<String, DefId>,
+        next_definition: u32,
+    ) -> Self {
+        let expression_types = analysis
+            .expression_types
+            .iter()
+            .map(|expression| (expression.span, expression.ty.clone()))
+            .collect();
+        Self {
+            ast,
+            analysis,
+            next_definition,
+            globals,
+            members,
+            expression_types,
+            diagnostics: Vec::new(),
+            module,
+        }
+    }
+
+    fn lower(self) -> Result<HirProgram, Vec<Diagnostic>> {
+        let (module, entry, _) = self.lower_module()?;
+        Ok(HirProgram {
+            schema_version: 1,
+            modules: vec![module],
+            entry,
+        })
+    }
+
+    fn lower_module(mut self) -> Result<(HirModule, Option<DefId>, u32), Vec<Diagnostic>> {
         self.index_globals();
         self.index_members();
         let definitions = self
@@ -84,22 +131,29 @@ impl<'a> Lowerer<'a> {
         if !self.diagnostics.is_empty() {
             return Err(self.diagnostics);
         }
-        let entry = self.globals.get("main").copied();
-        Ok(HirProgram {
-            schema_version: 1,
-            modules: vec![HirModule {
-                id: SOURCE_MODULE,
+        let entry = self
+            .ast
+            .items
+            .iter()
+            .any(|item| item_name(item) == "main")
+            .then(|| self.globals["main"]);
+        Ok((
+            HirModule {
+                id: self.module,
                 definitions,
-            }],
+            },
             entry,
-        })
+            self.next_definition,
+        ))
     }
 
     fn index_globals(&mut self) {
         for item in &self.ast.items {
             let name = item_name(item);
-            let id = self.allocate();
-            self.globals.entry(name.to_owned()).or_insert(id);
+            if !self.globals.contains_key(name) {
+                let id = self.allocate();
+                self.globals.insert(name.to_owned(), id);
+            }
         }
     }
 
@@ -108,23 +162,29 @@ impl<'a> Lowerer<'a> {
             match item {
                 Item::Struct(node) => {
                     for field in &node.fields {
-                        let id = self.allocate();
-                        self.members
-                            .insert(format!("{}.{}", node.name, field.name), id);
+                        let key = format!("{}.{}", node.name, field.name);
+                        if !self.members.contains_key(&key) {
+                            let id = self.allocate();
+                            self.members.insert(key, id);
+                        }
                     }
                 }
                 Item::Enum(node) => {
                     for variant in &node.variants {
-                        let id = self.allocate();
-                        self.members
-                            .insert(format!("{}::{}", node.name, variant.name), id);
+                        let key = format!("{}::{}", node.name, variant.name);
+                        if !self.members.contains_key(&key) {
+                            let id = self.allocate();
+                            self.members.insert(key, id);
+                        }
                     }
                 }
                 Item::State(node) => {
                     for field in &node.fields {
-                        let id = self.allocate();
-                        self.members
-                            .insert(format!("{}.{}", node.name, field.name), id);
+                        let key = format!("{}.{}", node.name, field.name);
+                        if !self.members.contains_key(&key) {
+                            let id = self.allocate();
+                            self.members.insert(key, id);
+                        }
                     }
                 }
                 Item::Function(_) | Item::Agent(_) | Item::Pipeline(_) | Item::SafetyBound(_) => {}
@@ -502,7 +562,7 @@ impl<'a> Lowerer<'a> {
 
     fn allocate(&mut self) -> DefId {
         let id = DefId {
-            module: SOURCE_MODULE,
+            module: self.module,
             index: self.next_definition,
         };
         self.next_definition += 1;

@@ -5,10 +5,12 @@ pub mod database;
 pub mod hir;
 mod lower;
 mod mir_lower;
+mod package;
 
 pub use async_lower::{AsyncLowerError, lower_async_state_machines};
 pub use lower::lower_to_hir;
 pub use mir_lower::lower_to_mir;
+pub use package::{PackageCompilation, PackageSource, compile_package};
 
 use serde::{Deserialize, Serialize};
 use std::fmt::Write as _;

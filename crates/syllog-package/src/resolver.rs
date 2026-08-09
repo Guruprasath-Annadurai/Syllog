@@ -164,6 +164,12 @@ struct Constraint {
     exact: bool,
 }
 
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct SearchState {
+    selected: Vec<(String, Version, String)>,
+    constraints: Vec<(String, Vec<(String, String)>)>,
+}
+
 /// Resolves a manifest into a reproducible, verified package graph.
 ///
 /// The solver explores versions in descending order and package names in
@@ -190,7 +196,13 @@ pub fn resolve(
         )?;
     }
 
-    let selected = search(index, policy, BTreeMap::new(), &constraints)?;
+    let selected = search(
+        index,
+        policy,
+        BTreeMap::new(),
+        &constraints,
+        &mut BTreeMap::new(),
+    )?;
     let packages = selected
         .values()
         .map(|release| LockedPackage {
@@ -219,21 +231,29 @@ fn search(
     policy: ResolvePolicy,
     selected: BTreeMap<String, PackageRelease>,
     constraints: &BTreeMap<String, Vec<Constraint>>,
+    failed_states: &mut BTreeMap<SearchState, ResolveError>,
 ) -> Result<BTreeMap<String, PackageRelease>, ResolveError> {
+    let state = state_fingerprint(&selected, constraints);
+    if let Some(error) = failed_states.get(&state) {
+        return Err(error.clone());
+    }
     for (name, release) in &selected {
         if let Some(active) = constraints.get(name)
             && !active
                 .iter()
                 .all(|constraint| constraint.requirement.matches(&release.version))
         {
-            return Err(conflict(name, active));
+            let error = conflict(name, active);
+            failed_states.insert(state, error.clone());
+            return Err(error);
         }
     }
 
     let Some(name) = constraints
-        .keys()
-        .find(|name| !selected.contains_key(*name))
-        .cloned()
+        .iter()
+        .filter(|(name, _)| !selected.contains_key(*name))
+        .min_by_key(|(name, active)| (candidate_count(index, name, active, policy), *name))
+        .map(|(name, _)| name.clone())
     else {
         return Ok(selected);
     };
@@ -292,13 +312,74 @@ fn search(
                 ),
             )?;
         }
-        match search(index, policy, next_selected, &next_constraints) {
+        match search(
+            index,
+            policy,
+            next_selected,
+            &next_constraints,
+            failed_states,
+        ) {
             Ok(solution) => return Ok(solution),
             Err(error @ ResolveError::Conflict { .. }) => last_conflict = Some(error),
             Err(error) => return Err(error),
         }
     }
-    Err(last_conflict.unwrap_or_else(|| conflict(&name, active)))
+    let error = last_conflict.unwrap_or_else(|| conflict(&name, active));
+    failed_states.insert(state, error.clone());
+    Err(error)
+}
+
+fn candidate_count(
+    index: &dyn PackageIndex,
+    name: &str,
+    active: &[Constraint],
+    policy: ResolvePolicy,
+) -> usize {
+    index
+        .releases(name)
+        .iter()
+        .filter(|release| {
+            active
+                .iter()
+                .all(|constraint| constraint.requirement.matches(&release.version))
+                && (!release.yanked
+                    || active.iter().any(|constraint| {
+                        constraint.exact && constraint.requirement.matches(&release.version)
+                    }))
+                && (!policy.offline || release.available_offline)
+        })
+        .count()
+}
+
+fn state_fingerprint(
+    selected: &BTreeMap<String, PackageRelease>,
+    constraints: &BTreeMap<String, Vec<Constraint>>,
+) -> SearchState {
+    let selected = selected
+        .iter()
+        .map(|(name, release)| {
+            (
+                name.clone(),
+                release.version.clone(),
+                release.checksum.clone(),
+            )
+        })
+        .collect();
+    let constraints = constraints
+        .iter()
+        .map(|(name, active)| {
+            let mut requirements = active
+                .iter()
+                .map(|constraint| (constraint.text.clone(), constraint.origin.clone()))
+                .collect::<Vec<_>>();
+            requirements.sort();
+            (name.clone(), requirements)
+        })
+        .collect();
+    SearchState {
+        selected,
+        constraints,
+    }
 }
 
 fn add_constraint(

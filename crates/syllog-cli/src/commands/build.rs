@@ -16,6 +16,12 @@ pub fn execute(path: &Path, target: &str, output: &Path) -> anyhow::Result<ExitC
         return Ok(ExitCode::FAILURE);
     };
     let artifact = emit(&mir, &WasmOptions::default()).context("Wasm code generation failed")?;
+    if let Some(parent) = output.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("could not create {}", parent.display()))?;
+    }
     fs::write(output, artifact.bytes)
         .with_context(|| format!("could not write {}", output.display()))?;
     println!("built {} -> {}", path.display(), output.display());

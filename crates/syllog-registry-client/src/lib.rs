@@ -1,5 +1,9 @@
 //! Signed, content-addressed Syllog registry protocol.
 
+mod transport;
+
+pub use transport::*;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path};
 

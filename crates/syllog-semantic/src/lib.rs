@@ -227,10 +227,28 @@ impl<'a> Analyzer<'a> {
             }
             Item::Agent(node) => {
                 self.insert_value(alias, ValueSymbolKind::Agent, node.span);
-                self.agents.entry(alias.to_owned()).or_default();
+                let input = property(&node.fields, "input")
+                    .and_then(|field| field.ty.as_ref())
+                    .map(|ty| self.resolve_type(ty));
+                let output = property(&node.fields, "output")
+                    .and_then(|field| field.ty.as_ref())
+                    .map(|ty| self.resolve_type(ty));
+                self.agents
+                    .insert(alias.to_owned(), AgentContract { input, output });
             }
             Item::Pipeline(node) => {
                 self.insert_value(alias, ValueSymbolKind::Pipeline, node.span);
+                let parameters = node
+                    .parameters
+                    .iter()
+                    .map(|parameter| self.resolve_type(&parameter.ty))
+                    .collect();
+                let result = node
+                    .return_type
+                    .as_ref()
+                    .map_or(ResolvedType::Unit, |ty| self.resolve_type(ty));
+                self.functions
+                    .insert(alias.to_owned(), FunctionSignature { parameters, result });
             }
             Item::SafetyBound(node) => {
                 self.insert_value(alias, ValueSymbolKind::SafetyBound, node.span);
