@@ -1,12 +1,13 @@
 //! `Anthropic` streaming-frame adapter for the Syllog provider ABI.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde_json::Value;
 use syllog_proxy::{
-    CredentialKind, FrameTransport, ModelRequest, ProviderAbiVersion, ProviderAdapter,
-    ProviderDescriptor, ProviderError, ProviderErrorCategory, ProviderFuture, SecretValue, Token,
-    TokenSink, TransportFrame, TransportRequest,
+    CredentialKind, FrameTransport, HttpSseTransport, HttpTransportConfigError, ModelRequest,
+    ProviderAbiVersion, ProviderAdapter, ProviderDescriptor, ProviderError, ProviderErrorCategory,
+    ProviderFuture, SecretValue, Token, TokenSink, TransportFrame, TransportRequest,
 };
 
 /// `Anthropic` provider adapter with an injected transport and bearer capability.
@@ -30,6 +31,21 @@ impl AnthropicAdapter {
             transport,
         }
     }
+
+    /// Creates an authenticated incremental HTTP/SSE `Anthropic` adapter.
+    ///
+    /// # Errors
+    ///
+    /// Rejects unsafe endpoints or invalid transport limits.
+    pub fn http(
+        credential: SecretValue,
+        endpoint: impl Into<String>,
+        frame_capacity: usize,
+        deadline: Duration,
+    ) -> Result<Self, HttpTransportConfigError> {
+        let transport = Arc::new(HttpSseTransport::new(endpoint, frame_capacity, deadline)?);
+        Ok(Self::new(credential, transport))
+    }
 }
 
 impl ProviderAdapter for AnthropicAdapter {
@@ -39,7 +55,7 @@ impl ProviderAdapter for AnthropicAdapter {
 
     fn stream(&self, request: ModelRequest, sink: TokenSink) -> ProviderFuture<'_> {
         Box::pin(async move {
-            let frames = self
+            let mut frames = self
                 .transport
                 .frames(TransportRequest {
                     provider: self.descriptor.name.clone(),
@@ -48,15 +64,13 @@ impl ProviderAdapter for AnthropicAdapter {
                     authorization: Some(self.credential.clone()),
                 })
                 .await?;
-            for frame in frames {
+            while let Some(frame) = frames.recv().await {
                 match frame {
                     TransportFrame::Data(data) => {
                         let value: Value = serde_json::from_str(&data).map_err(protocol_error)?;
-                        let text = value
-                            .pointer("/delta/text")
-                            .and_then(Value::as_str)
-                            .ok_or_else(|| protocol_error("missing delta.text"))?;
-                        sink.send(Ok(Token::from(text))).await?;
+                        if let Some(text) = value.pointer("/delta/text").and_then(Value::as_str) {
+                            sink.send(Ok(Token::from(text))).await?;
+                        }
                     }
                     TransportFrame::Error(error) => return Err(error),
                 }

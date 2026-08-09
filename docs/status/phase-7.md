@@ -1,82 +1,101 @@
 # Phase 7 implementation ledger
 
-Updated: 2026-08-03
+Updated: 2026-08-09
 
-Checked items have focused tests and the full repository gate at their commit.
-Unchecked items are not claimed by adjacent infrastructure.
+Checked items have executable tests in this repository. A checked implementation
+item is not a claim that an external provider accepted a live request; that
+separate evidence is recorded below.
 
 ## Gate 7.1 — Async lowering and structured tasks
 
 - [x] `await` syntax with `SYL2501` outside `async fn`
-- [x] Explicit verified `Start`, `Suspend`, `Resume`, `Complete`, and `Cancel` transitions
+- [x] Verified `Start`, `Suspend`, `Resume`, `Complete`, `Cancel`, and `Panic`
+      transitions
 - [x] Conservative live-local frame metadata and one shared drop state
-- [x] Deterministic and Tokio schedulers with identical lifecycle order
 - [x] Cancellation and panic run the shared drop path exactly once
-- [ ] Borrowed-local rejection across suspension
-- [ ] Child-task scope exit and general structured task groups
+- [x] Wasm exports resumable step functions and embeds async-frame metadata
+- [x] Pipeline fan-out uses a child scope that cancels and joins siblings
+- [x] Currently representable borrowed `Str` parameters and locals are rejected
+      when an async function contains an `await`
+- [ ] General reference syntax, region inference, and a complete borrow checker
+- [ ] Source-level `spawn` and arbitrary nested task scopes
 
-Known limitation: Syllog has no source reference/borrow syntax or borrow checker
-yet. Borrowed-local rejection depends on Phase 8 and is not claimed. The current
-async MIR is a verified scheduling side table; Wasm code generation does not
-yet emit resumable async frames.
+The borrow gate is deliberately conservative. Syllog does not yet expose a
+general `&T` reference type, so this check covers the borrowed string type that
+the current type system can represent. The complete ownership and borrowing
+model remains a Phase 8 requirement.
 
 ## Gate 7.2 — Versioned provider ABI
 
 - [x] Explicit major/minor provider ABI descriptor
 - [x] Incompatible ABI and duplicate registration rejection
 - [x] Immutable registry snapshots and exact route lookup
-- [x] Credential-kind declarations and formatting/JSON-safe secret values
-- [x] Explicit idempotent cancellation with cancellation-safe bounded sinks
-- [x] Ordered provider terminal failures and retained backpressure behavior
-- [x] Adapter-instance credential capability injection
+- [x] Credential-kind declarations and redacted secret values
+- [x] OpenAI bearer and Anthropic API-key/version headers
+- [x] Provider requests keep credentials out of bodies and lifecycle events
+- [x] Explicit idempotent cancellation with bounded sinks
+- [x] Incremental transport frames preserve ordered partial failures
+- [ ] OS keychain, workload identity, or HSM-backed credential sources
 
-Known limitation: adapter credentials are capability-wrapped and are excluded
-from formatting and serialization, but OS keychain/HSM-backed secret providers
-do not exist yet. No provider secret is placed in a model request or lifecycle
-event.
+Credentials are capability-wrapped, excluded from formatting and
+serialization, and marked sensitive at the HTTP layer. Environment-to-secret
+injection and production secret rotation remain deployment responsibilities.
 
 ## Gate 7.3 — Production pipeline executor
 
 - [x] Serial stage execution
-- [x] Measured bounded fan-out and structured child joins
-- [x] Declaration-order and completion-order join policies
-- [x] Paused-time retry backoff and total stage deadlines
-- [x] Shared threshold/reset circuit breaker
+- [x] Bounded fan-out with declaration-order and completion-order joins
+- [x] Retry backoff, total stage deadlines, and shared circuit breakers
+- [x] Structured failure values retain accumulated lifecycle events
 - [x] Cooperative cancellation waits for child cleanup
-- [x] Successful lifecycle logs exclude pipeline payloads
-- [ ] Failure results retain their accumulated lifecycle log
-- [ ] Forced cancellation grace period and explicit detached supervisor
+- [x] Configurable cancellation grace period
+- [x] Non-cooperative roots are explicitly recorded and reaped by a supervisor
+- [x] Lifecycle events exclude pipeline payloads
 
-Known limitation: stage cancellation is cooperative through `StageContext`; a
-stage that ignores cancellation must have a deadline to guarantee termination.
-Successful outcomes retain ordered lifecycle events, but current error returns
-contain only the normalized error, so failure-event retention is not claimed.
+Lifecycle retention is bounded by the configured event capacity. If that
+capacity is exhausted, oldest events are evicted; production deployments must
+size it from their maximum expected stage/attempt count or export events to an
+external sink.
 
-## Gate 7.4 — Provider adapters
+## Gate 7.4 — Provider transports and contracts
 
-- [x] Separate `OpenAI`, `Anthropic`, and local-model adapter crates
-- [x] Optional CLI linkage through independent Cargo feature flags
-- [x] Vendor-specific JSON frame decoding and normalized protocol errors
-- [x] Identical ordered partial-failure behavior across every adapter
-- [x] Identical bounded-sink cancellation behavior across every adapter
-- [x] Credential and prompt redaction at the injected transport boundary
-- [x] Offline, credential-free cross-adapter contract suite
-- [ ] Incremental SSE/HTTP transport (the current injected transport returns a
-      bounded invocation batch)
-- [ ] Local HTTP contract server covering status codes and streaming timing
-- [ ] Provider-specific authentication headers and retry-after hints
-- [ ] Opt-in nightly live tests with isolated quotas
+- [x] Separate OpenAI, Anthropic, and local-model adapter crates
+- [x] Independent CLI feature flags
+- [x] Incremental bounded HTTP/SSE decoding with downstream backpressure
+- [x] Split-chunk, CRLF, multi-line, `[DONE]`, UTF-8, content-type, and size
+      handling
+- [x] Loopback HTTP contract server verifies realistic stream timing and
+      mid-stream connection failure
+- [x] Contract tests verify exact OpenAI and Anthropic authentication headers
+- [x] HTTP 429 normalization preserves seconds or HTTP-date `Retry-After` hints
+- [x] Bounded error bodies and normalized timeout/unavailable/auth failures
+- [x] Redirects are rejected before credentials can cross endpoint boundaries
+- [x] Real local child-process transport without a shell
+- [x] Real loopback TCP socket transport with public-address rejection
+- [x] One absolute deadline covers local connect/write/read/process completion
+- [x] Offline credential-free cross-adapter contract suite
+- [x] Nightly/manual opt-in live-provider workflow with isolated secret inputs
+- [ ] Automatic provider retry scheduling from `Retry-After`
+- [ ] A successfully executed live-provider workflow run in this checkout
 
-Known limitation: these are real ABI adapters and vendor frame decoders, but
-they do not yet initiate network or local-process I/O. The transport is an
-injected capability exercised entirely offline; its current batch-returning
-shape must be replaced with an incremental bounded frame stream before an HTTP
-implementation can preserve end-to-end backpressure. Calling these production
-HTTP adapters at this checkpoint would be inaccurate.
+The runtime surfaces `Retry-After` as typed error metadata so pipeline policy
+can decide whether replay is safe. The HTTP adapter does not silently retry a
+possibly non-idempotent request. Live tests are ignored unless
+`SYLLOG_LIVE_PROVIDER_TESTS=1` and provider credentials/models are supplied;
+they were not run during this implementation because no live credentials were
+used.
+
+## Verification evidence
+
+Focused tests cover HTTP contracts, local process/socket I/O, lifecycle failure
+retention and detachment, async borrow rejection, and Wasm state resumption. The
+repository CI script is the final local gate for formatting, lockfile policy,
+Clippy, unit/integration tests, docs, audit, and deny checks.
 
 ## Phase 7 exit gate
 
-Not satisfied. The provider-neutral pipeline and four offline adapter contracts
-pass, but the unchecked async-scope, failure-observability, cancellation-grace,
-incremental transport, HTTP contract-server, and nightly-live-test items above
-remain release blockers.
+The repository implementation gate is satisfied when the full CI script passes
+at the Phase 7 commit. External launch approval remains open until a controlled
+live-provider run, load/fault testing, secret-store integration, and production
+observability/SLO validation are completed. Those deployment gates must not be
+inferred from green offline tests.

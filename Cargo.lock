@@ -1644,6 +1644,7 @@ dependencies = [
  "toml_edit",
  "tracing",
  "tracing-subscriber",
+ "wasmtime",
 ]
 
 [[package]]
@@ -1757,6 +1758,9 @@ dependencies = [
 name = "syllog-provider-contract-tests"
 version = "0.1.0"
 dependencies = [
+ "axum",
+ "futures-util",
+ "serde_json",
  "syllog-provider-anthropic",
  "syllog-provider-local",
  "syllog-provider-openai",
@@ -1770,6 +1774,8 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "syllog-proxy",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]
@@ -1785,6 +1791,9 @@ name = "syllog-proxy"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "futures-util",
+ "httpdate",
+ "reqwest",
  "serde",
  "serde_json",
  "thiserror",

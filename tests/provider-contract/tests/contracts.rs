@@ -9,6 +9,7 @@ use syllog_provider_openai::OpenAiAdapter;
 use syllog_proxy::{
     FrameTransport, ModelRequest, ModelRoute, PipelineExecutor, ProviderAdapter, ProviderError,
     ProviderErrorCategory, SecretValue, Token, TransportFrame, TransportFuture, TransportRequest,
+    transport_frame_channel,
 };
 
 #[derive(Clone)]
@@ -19,7 +20,19 @@ struct ScriptTransport {
 impl FrameTransport for ScriptTransport {
     fn frames(&self, _request: TransportRequest) -> TransportFuture<'_> {
         let result = self.result.clone();
-        Box::pin(async move { result })
+        Box::pin(async move {
+            let frames = result?;
+            let capacity = frames.len().max(1);
+            let (sender, receiver) = transport_frame_channel(capacity)?;
+            tokio::spawn(async move {
+                for frame in frames {
+                    if sender.send(frame).await.is_err() {
+                        break;
+                    }
+                }
+            });
+            Ok(receiver)
+        })
     }
 }
 
@@ -31,7 +44,10 @@ struct RecordingTransport {
 impl FrameTransport for RecordingTransport {
     fn frames(&self, request: TransportRequest) -> TransportFuture<'_> {
         self.requests.lock().unwrap().push(request);
-        Box::pin(async { Ok(Vec::new()) })
+        Box::pin(async {
+            let (_, receiver) = transport_frame_channel(1)?;
+            Ok(receiver)
+        })
     }
 }
 

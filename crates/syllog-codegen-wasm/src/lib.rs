@@ -7,8 +7,9 @@ use std::fmt::Write as _;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use syllog_ir::{
-    BasicBlock, BinaryOp, Constant, DefId, LocalId, MirFunction, MirProgram, MirType, Operand,
-    Place, Rvalue, Statement, Terminator, VerificationError, verify,
+    AsyncStateMachine, AsyncTransition, AsyncVerificationError, BasicBlock, BinaryOp, Constant,
+    DefId, LocalId, MirFunction, MirProgram, MirType, Operand, Place, Rvalue, Statement,
+    Terminator, VerificationError, verify, verify_async_machine,
 };
 use wasm_encoder::{
     BlockType, CodeSection, CustomSection, ExportKind, ExportSection, Function, FunctionSection,
@@ -22,8 +23,10 @@ pub struct ArtifactMetadata {
     pub format_version: u32,
     /// Exported entry definition.
     pub entry: DefId,
-    /// SHA-256 of canonical verified MIR input.
+    /// SHA-256 of canonical verified MIR and async-frame inputs.
     pub source_hash: [u8; 32],
+    /// Number of resumable async frames emitted into the artifact.
+    pub async_frame_count: u32,
 }
 
 /// Deterministic Wasm emission controls.
@@ -59,6 +62,9 @@ pub enum CodegenError {
     /// Input MIR violates a backend invariant.
     #[error("MIR verification failed")]
     InvalidMir(Vec<VerificationError>),
+    /// Input async state-machine metadata violates verifier invariants.
+    #[error("async frame verification failed")]
+    InvalidAsyncFrame(Vec<AsyncVerificationError>),
     /// Program declares no executable entry.
     #[error("MIR program has no entry function")]
     MissingEntry,
@@ -79,7 +85,26 @@ pub enum CodegenError {
 ///
 /// Returns verification, missing-entry, unsupported-ABI, or encoding errors.
 pub fn emit(program: &MirProgram, options: &WasmOptions) -> Result<WasmArtifact, CodegenError> {
+    emit_with_async_frames(program, &[], options)
+}
+
+/// Emits verified MIR together with resumable async frame-step exports.
+///
+/// Each async export accepts `(state, signal)` and returns the next state.
+/// Signal `1` wakes a suspension, `2` cancels it, and `3` injects panic.
+///
+/// # Errors
+///
+/// Returns verification, unsupported-ABI, missing-entry, or encoding errors.
+pub fn emit_with_async_frames(
+    program: &MirProgram,
+    async_frames: &[AsyncStateMachine],
+    options: &WasmOptions,
+) -> Result<WasmArtifact, CodegenError> {
     verify(program).map_err(CodegenError::InvalidMir)?;
+    for frame in async_frames {
+        verify_async_machine(frame).map_err(CodegenError::InvalidAsyncFrame)?;
+    }
     let entry = program.entry.ok_or(CodegenError::MissingEntry)?;
     let function_indices = program
         .functions
@@ -105,24 +130,52 @@ pub fn emit(program: &MirProgram, options: &WasmOptions) -> Result<WasmArtifact,
             })?,
         );
     }
+    let async_type = u32::try_from(program.functions.len())
+        .map_err(|_| CodegenError::UnsupportedOperation("too many function types".into()))?;
+    if !async_frames.is_empty() {
+        types
+            .ty()
+            .function([ValType::I32, ValType::I32], [ValType::I32]);
+        for _ in async_frames {
+            functions.function(async_type);
+        }
+    }
     let mut exports = ExportSection::new();
     let entry_index = function_indices
         .get(&entry)
         .copied()
         .ok_or(CodegenError::MissingEntry)?;
     exports.export("main", ExportKind::Func, entry_index);
+    let sync_function_count = u32::try_from(program.functions.len())
+        .map_err(|_| CodegenError::UnsupportedOperation("too many functions".into()))?;
+    for (index, frame) in async_frames.iter().enumerate() {
+        let index = u32::try_from(index)
+            .map_err(|_| CodegenError::UnsupportedOperation("too many async frames".into()))?;
+        exports.export(
+            &format!(
+                "syllog_async_{}_{}_step",
+                frame.function.module, frame.function.index
+            ),
+            ExportKind::Func,
+            sync_function_count.saturating_add(index),
+        );
+    }
 
     let mut code = CodeSection::new();
     for function in &program.functions {
         code.function(&encode_function(function, &function_indices)?);
     }
+    for frame in async_frames {
+        code.function(&encode_async_frame(frame)?);
+    }
 
-    let canonical = serde_json::to_vec(program).map_err(CodegenError::Encoding)?;
+    let canonical = serde_json::to_vec(&(program, async_frames)).map_err(CodegenError::Encoding)?;
     let source_hash: [u8; 32] = Sha256::digest(&canonical).into();
     let metadata = ArtifactMetadata {
         format_version: 1,
         entry,
         source_hash,
+        async_frame_count: u32::try_from(async_frames.len()).unwrap_or(u32::MAX),
     };
     let source_map = encode_source_map(program, *options);
     let mut module = Module::new();
@@ -134,10 +187,81 @@ pub fn emit(program: &MirProgram, options: &WasmOptions) -> Result<WasmArtifact,
         name: Cow::Borrowed("syllog.source_map"),
         data: Cow::Owned(source_map),
     });
+    if !async_frames.is_empty() {
+        module.section(&CustomSection {
+            name: Cow::Borrowed("syllog.async_frames"),
+            data: Cow::Owned(serde_json::to_vec(async_frames).map_err(CodegenError::Encoding)?),
+        });
+    }
     Ok(WasmArtifact {
         bytes: module.finish(),
         metadata,
     })
+}
+
+fn encode_async_frame(frame: &AsyncStateMachine) -> Result<Function, CodegenError> {
+    let mut function = Function::new([]);
+    for state in &frame.states {
+        function.instruction(&Instruction::LocalGet(0));
+        function.instruction(&Instruction::I32Const(i32::try_from(state.id.0).map_err(
+            |_| CodegenError::UnsupportedOperation("async state exceeds i32 ABI".into()),
+        )?));
+        function.instruction(&Instruction::I32Eq);
+        function.instruction(&Instruction::If(BlockType::Empty));
+        encode_async_transition(&mut function, state.id.0, &state.transition)?;
+        function.instruction(&Instruction::Return);
+        function.instruction(&Instruction::End);
+    }
+    function.instruction(&Instruction::I32Const(-1));
+    function.instruction(&Instruction::End);
+    Ok(function)
+}
+
+fn encode_async_transition(
+    function: &mut Function,
+    current: u32,
+    transition: &AsyncTransition,
+) -> Result<(), CodegenError> {
+    let next = match transition {
+        AsyncTransition::Start { next } => next.0,
+        AsyncTransition::Suspend { resume, cancel, .. } => {
+            function.instruction(&Instruction::LocalGet(1));
+            function.instruction(&Instruction::I32Const(2));
+            function.instruction(&Instruction::I32Eq);
+            function.instruction(&Instruction::If(BlockType::Result(ValType::I32)));
+            function.instruction(&Instruction::I32Const(async_i32(cancel.0)?));
+            function.instruction(&Instruction::Else);
+            function.instruction(&Instruction::LocalGet(1));
+            function.instruction(&Instruction::I32Const(1));
+            function.instruction(&Instruction::I32Eq);
+            function.instruction(&Instruction::If(BlockType::Result(ValType::I32)));
+            function.instruction(&Instruction::I32Const(async_i32(resume.0)?));
+            function.instruction(&Instruction::Else);
+            function.instruction(&Instruction::I32Const(async_i32(current)?));
+            function.instruction(&Instruction::End);
+            function.instruction(&Instruction::End);
+            return Ok(());
+        }
+        AsyncTransition::Resume { next, panic } => {
+            function.instruction(&Instruction::LocalGet(1));
+            function.instruction(&Instruction::I32Const(3));
+            function.instruction(&Instruction::I32Eq);
+            function.instruction(&Instruction::If(BlockType::Result(ValType::I32)));
+            function.instruction(&Instruction::I32Const(async_i32(panic.0)?));
+            function.instruction(&Instruction::Else);
+            function.instruction(&Instruction::I32Const(async_i32(next.0)?));
+            function.instruction(&Instruction::End);
+            return Ok(());
+        }
+        AsyncTransition::Complete | AsyncTransition::Cancel { .. } => current,
+    };
+    function.instruction(&Instruction::I32Const(async_i32(next)?));
+    Ok(())
+}
+
+fn async_i32(state: u32) -> Result<i32, CodegenError> {
+    i32::try_from(state)
+        .map_err(|_| CodegenError::UnsupportedOperation("async state exceeds i32 ABI".into()))
 }
 
 fn supported_signature(function: &MirFunction) -> Result<(), CodegenError> {

@@ -5,17 +5,19 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use anyhow::{Context, bail};
-use syllog_codegen_wasm::{WasmOptions, emit};
+use syllog_codegen_wasm::{WasmOptions, emit_with_async_frames};
 
 /// Builds one source file into a deterministic Wasm artifact.
 pub fn execute(path: &Path, target: &str, output: &Path) -> anyhow::Result<ExitCode> {
     if target != "wasm32-syllog" {
         bail!("unsupported target '{target}'; expected wasm32-syllog");
     }
-    let Some(mir) = super::compile_to_mir(path)? else {
+    let Some(program) = super::compile_program(path)? else {
         return Ok(ExitCode::FAILURE);
     };
-    let artifact = emit(&mir, &WasmOptions::default()).context("Wasm code generation failed")?;
+    let artifact =
+        emit_with_async_frames(&program.mir, &program.async_frames, &WasmOptions::default())
+            .context("Wasm code generation failed")?;
     if let Some(parent) = output.parent()
         && !parent.as_os_str().is_empty()
     {

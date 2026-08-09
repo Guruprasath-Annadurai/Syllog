@@ -43,5 +43,8 @@ provider-anthropic = ["dep:syllog-provider-anthropic"]
 provider-local = ["dep:syllog-provider-local"]
 provider-openai = ["dep:syllog-provider-openai"]
 
+[dev-dependencies]
+wasmtime.workspace = true
+
 [lints]
 workspace = true

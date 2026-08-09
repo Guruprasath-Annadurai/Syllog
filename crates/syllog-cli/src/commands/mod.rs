@@ -18,18 +18,24 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use semver::VersionReq;
 use syllog_compiler::{
-    PackageSource, compile, compile_package, lower_to_hir, lower_to_mir, render_human,
+    PackageSource, compile, compile_package, lower_async_state_machines, lower_to_hir,
+    lower_to_mir, render_human,
 };
 use syllog_package::{ContentAddressedCache, LockedPackage, Resolution, read_lockfile};
 use syllog_project::TargetKind;
 use syllog_registry_client::PackageArchive;
 
-pub(crate) fn compile_to_mir(path: &Path) -> anyhow::Result<Option<syllog_ir::MirProgram>> {
+pub(crate) struct CompiledProgram {
+    pub(crate) mir: syllog_ir::MirProgram,
+    pub(crate) async_frames: Vec<syllog_ir::AsyncStateMachine>,
+}
+
+pub(crate) fn compile_program(path: &Path) -> anyhow::Result<Option<CompiledProgram>> {
     let paths = project_source_paths(path)?;
     let has_dependencies = syllog_project::discover(path)
         .is_ok_and(|project| !project.manifest.dependencies.is_empty());
     if paths.len() > 1 || has_dependencies {
-        return compile_package_to_mir(path, &paths);
+        return compile_package_program(path, &paths);
     }
     let path = paths.first().map_or(path, PathBuf::as_path);
     let source =
@@ -49,15 +55,17 @@ pub(crate) fn compile_to_mir(path: &Path) -> anyhow::Result<Option<syllog_ir::Mi
         .expect("successful compilation has symbols");
     let hir = lower_to_hir(ast, symbols)
         .map_err(|diagnostics| anyhow::anyhow!("HIR lowering failed: {diagnostics:#?}"))?;
+    let async_frames = lower_async_state_machines(&hir)
+        .map_err(|error| anyhow::anyhow!("async lowering failed: {error}"))?;
     let mir = lower_to_mir(&hir)
         .map_err(|diagnostics| anyhow::anyhow!("MIR lowering failed: {diagnostics:#?}"))?;
-    Ok(Some(mir))
+    Ok(Some(CompiledProgram { mir, async_frames }))
 }
 
-fn compile_package_to_mir(
+fn compile_package_program(
     requested: &Path,
     paths: &[PathBuf],
-) -> anyhow::Result<Option<syllog_ir::MirProgram>> {
+) -> anyhow::Result<Option<CompiledProgram>> {
     let project =
         syllog_project::discover(requested).context("could not discover Syllog project")?;
     let mut source_text = BTreeMap::new();
@@ -89,9 +97,11 @@ fn compile_package_to_mir(
         return Ok(None);
     }
     let hir = compilation.hir.expect("successful package has linked HIR");
+    let async_frames = lower_async_state_machines(&hir)
+        .map_err(|error| anyhow::anyhow!("async lowering failed: {error}"))?;
     let mir = lower_to_mir(&hir)
         .map_err(|diagnostics| anyhow::anyhow!("MIR lowering failed: {diagnostics:#?}"))?;
-    Ok(Some(mir))
+    Ok(Some(CompiledProgram { mir, async_frames }))
 }
 
 fn load_locked_dependency_sources(

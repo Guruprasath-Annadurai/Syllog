@@ -4,8 +4,10 @@ use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize, Serializer};
+use tokio::sync::mpsc;
 
 use crate::TokenSink;
 
@@ -139,16 +141,39 @@ pub enum TransportFrame {
     Error(ProviderError),
 }
 
-/// A boxed asynchronous transport invocation.
+/// Bounded incremental stream of provider transport frames.
+pub type TransportFrameStream = mpsc::Receiver<TransportFrame>;
+
+/// Producer half of a bounded provider transport stream.
+pub type TransportFrameSender = mpsc::Sender<TransportFrame>;
+
+/// Creates a bounded raw-frame transport channel.
+///
+/// # Errors
+///
+/// Rejects a zero-capacity channel because it cannot make progress.
+pub fn transport_frame_channel(
+    capacity: usize,
+) -> Result<(TransportFrameSender, TransportFrameStream), ProviderError> {
+    if capacity == 0 {
+        return Err(ProviderError::categorized(
+            ProviderErrorCategory::Protocol,
+            "transport frame capacity must be greater than zero",
+        ));
+    }
+    Ok(mpsc::channel(capacity))
+}
+
+/// A boxed asynchronous transport connection.
 pub type TransportFuture<'a> =
-    Pin<Box<dyn Future<Output = Result<Vec<TransportFrame>, ProviderError>> + Send + 'a>>;
+    Pin<Box<dyn Future<Output = Result<TransportFrameStream, ProviderError>> + Send + 'a>>;
 
 /// Injected HTTP, socket, or process transport used by provider adapters.
 ///
 /// Keeping transport outside adapters makes frame decoding deterministic and
 /// permits offline conformance tests without production credentials.
 pub trait FrameTransport: Send + Sync {
-    /// Executes one request and returns ordered raw frames.
+    /// Opens one request and returns an incremental bounded raw-frame stream.
     fn frames(&self, request: TransportRequest) -> TransportFuture<'_>;
 }
 
@@ -174,6 +199,7 @@ pub enum ProviderErrorCategory {
 pub struct ProviderError {
     category: ProviderErrorCategory,
     message: String,
+    retry_after: Option<Duration>,
 }
 
 impl ProviderError {
@@ -189,6 +215,17 @@ impl ProviderError {
         Self {
             category,
             message: message.into(),
+            retry_after: None,
+        }
+    }
+
+    /// Creates a rate-limit failure with an optional server-requested delay.
+    #[must_use]
+    pub fn rate_limited(message: impl Into<String>, retry_after: Option<Duration>) -> Self {
+        Self {
+            category: ProviderErrorCategory::RateLimited,
+            message: message.into(),
+            retry_after,
         }
     }
 
@@ -196,6 +233,12 @@ impl ProviderError {
     #[must_use]
     pub fn category(&self) -> ProviderErrorCategory {
         self.category
+    }
+
+    /// Returns the parsed `Retry-After` duration when supplied by the provider.
+    #[must_use]
+    pub fn retry_after(&self) -> Option<Duration> {
+        self.retry_after
     }
 }
 

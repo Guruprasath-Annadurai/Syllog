@@ -1,7 +1,7 @@
 //! Differential Wasm backend contracts.
 
-use syllog_codegen_wasm::{WasmOptions, emit};
-use syllog_compiler::{lower_to_hir, lower_to_mir};
+use syllog_codegen_wasm::{WasmOptions, emit, emit_with_async_frames};
+use syllog_compiler::{lower_async_state_machines, lower_to_hir, lower_to_mir};
 use syllog_interpreter::{InterpreterLimits, RuntimeValue, execute};
 use syllog_parser::parse_syl;
 use syllog_runtime::Sandbox;
@@ -64,4 +64,47 @@ fn artifacts_are_byte_deterministic_and_versioned() {
     assert_eq!(first.metadata.format_version, 1);
     assert_eq!(first.metadata.entry, program.entry.unwrap());
     assert_ne!(first.metadata.source_hash, [0; 32]);
+    assert_eq!(first.metadata.async_frame_count, 0);
+}
+
+#[test]
+fn wasm_exports_verified_resumable_async_frame_transitions() {
+    let source = r"
+        fn ready(value: U64) -> U64 { value }
+        async fn job() -> U64 { await ready(7) }
+        fn main() -> U64 { 0 }
+    ";
+    let ast = parse_syl(source).unwrap();
+    let analysis = analyze("async-codegen.syl", &ast);
+    assert!(analysis.diagnostics.is_empty());
+    let hir = lower_to_hir(&ast, &analysis.symbols).unwrap();
+    let frames = lower_async_state_machines(&hir).unwrap();
+    let program = lower_to_mir(&hir).unwrap();
+    let artifact = emit_with_async_frames(&program, &frames, &WasmOptions::default()).unwrap();
+    let synchronous = emit(&program, &WasmOptions::default()).unwrap();
+    assert_eq!(artifact.metadata.async_frame_count, 1);
+    assert_ne!(
+        artifact.metadata.source_hash,
+        synchronous.metadata.source_hash
+    );
+
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &artifact.bytes).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let frame = &frames[0];
+    let step = instance
+        .get_typed_func::<(i32, i32), i32>(
+            &mut store,
+            &format!(
+                "syllog_async_{}_{}_step",
+                frame.function.module, frame.function.index
+            ),
+        )
+        .unwrap();
+    assert_eq!(step.call(&mut store, (0, 0)).unwrap(), 1);
+    assert_eq!(step.call(&mut store, (1, 0)).unwrap(), 1);
+    assert_eq!(step.call(&mut store, (1, 1)).unwrap(), 2);
+    assert_eq!(step.call(&mut store, (2, 0)).unwrap(), 3);
+    assert_eq!(step.call(&mut store, (1, 2)).unwrap(), 4);
 }

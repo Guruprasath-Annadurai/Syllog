@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::Mutex as StdMutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio::sync::{Mutex, Notify, Semaphore};
@@ -12,9 +13,6 @@ use tokio::time::{Duration, Instant, timeout};
 
 /// Boxed asynchronous stage operation.
 pub type StageFuture = Pin<Box<dyn Future<Output = Result<String, StageError>> + Send + 'static>>;
-type BranchOutput = (usize, String, Vec<PipelineEvent>);
-type JoinedBranch = Result<Result<BranchOutput, StageError>, JoinError>;
-
 trait StageOperation: Send + Sync {
     fn call(&self, context: StageContext, input: String) -> StageFuture;
 }
@@ -121,14 +119,17 @@ impl Stage {
     }
 }
 
-enum StageGroup {
+/// One structured execution group in a pipeline plan.
+pub enum PipelineGroup {
+    /// Ordered stages running in the parent task.
     Serial(Vec<Stage>),
+    /// Bounded child tasks that must rejoin their parent scope.
     FanOut(Vec<Stage>, JoinPolicy),
 }
 
 /// Immutable pipeline topology.
 pub struct PipelinePlan {
-    groups: Vec<StageGroup>,
+    groups: Vec<PipelineGroup>,
 }
 
 impl PipelinePlan {
@@ -136,7 +137,7 @@ impl PipelinePlan {
     #[must_use]
     pub fn serial(stages: Vec<Stage>) -> Self {
         Self {
-            groups: vec![StageGroup::Serial(stages)],
+            groups: vec![PipelineGroup::Serial(stages)],
         }
     }
 
@@ -144,8 +145,14 @@ impl PipelinePlan {
     #[must_use]
     pub fn fan_out(stages: Vec<Stage>, join: JoinPolicy) -> Self {
         Self {
-            groups: vec![StageGroup::FanOut(stages, join)],
+            groups: vec![PipelineGroup::FanOut(stages, join)],
         }
+    }
+
+    /// Creates a multi-scope structured execution plan.
+    #[must_use]
+    pub fn structured(groups: Vec<PipelineGroup>) -> Self {
+        Self { groups }
     }
 }
 
@@ -260,6 +267,13 @@ pub enum PipelineEvent {
     },
     /// Root scope observed cancellation.
     Cancelled,
+    /// Cooperative cancellation grace elapsed before the root task stopped.
+    CancellationGraceElapsed {
+        /// Configured grace period in milliseconds.
+        grace_millis: u64,
+    },
+    /// A non-cooperative root task was transferred to the reaping supervisor.
+    TaskDetached,
     /// Pipeline completed normally.
     Completed,
 }
@@ -271,6 +285,89 @@ pub struct PipelineOutcome {
     pub output: Vec<String>,
     /// Ordered payload-free lifecycle metadata.
     pub events: Vec<PipelineEvent>,
+}
+
+/// Failed pipeline result with complete lifecycle evidence retained.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{error}")]
+pub struct PipelineFailure {
+    /// Normalized terminal stage failure.
+    pub error: StageError,
+    /// Ordered payload-free lifecycle events observed before return.
+    pub events: Vec<PipelineEvent>,
+}
+
+#[derive(Clone)]
+struct LifecycleLog {
+    capacity: usize,
+    events: Arc<StdMutex<Vec<PipelineEvent>>>,
+}
+
+impl LifecycleLog {
+    fn new(capacity: usize) -> Self {
+        Self {
+            capacity,
+            events: Arc::new(StdMutex::new(Vec::with_capacity(capacity))),
+        }
+    }
+
+    fn push(&self, event: PipelineEvent) {
+        let mut events = self
+            .events
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if events.len() == self.capacity {
+            events.remove(0);
+        }
+        events.push(event);
+    }
+
+    fn extend(&self, incoming: Vec<PipelineEvent>) {
+        for event in incoming {
+            self.push(event);
+        }
+    }
+
+    fn cancelled(&self) {
+        let mut events = self
+            .events
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if events.contains(&PipelineEvent::Cancelled) {
+            return;
+        }
+        if events.len() == self.capacity {
+            events.remove(0);
+        }
+        events.push(PipelineEvent::Cancelled);
+    }
+
+    fn snapshot(&self) -> Vec<PipelineEvent> {
+        self.events
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+}
+
+#[derive(Clone, Default)]
+struct DetachedTaskSupervisor {
+    active: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl DetachedTaskSupervisor {
+    fn supervise(&self, task: tokio::task::JoinHandle<Result<PipelineOutcome, PipelineFailure>>) {
+        self.active.fetch_add(1, Ordering::AcqRel);
+        let active = Arc::clone(&self.active);
+        tokio::spawn(async move {
+            let _ = task.await;
+            active.fetch_sub(1, Ordering::AcqRel);
+        });
+    }
+
+    fn active(&self) -> usize {
+        self.active.load(Ordering::Acquire)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -347,6 +444,8 @@ pub struct ProductionPipelineExecutor {
     event_capacity: usize,
     max_fan_out: usize,
     circuits: Arc<Mutex<BTreeMap<String, CircuitState>>>,
+    cancellation_grace: Duration,
+    supervisor: DetachedTaskSupervisor,
 }
 
 impl ProductionPipelineExecutor {
@@ -369,7 +468,22 @@ impl ProductionPipelineExecutor {
             event_capacity,
             max_fan_out,
             circuits: Arc::new(Mutex::new(BTreeMap::new())),
+            cancellation_grace: Duration::from_secs(5),
+            supervisor: DetachedTaskSupervisor::default(),
         })
+    }
+
+    /// Overrides the cooperative cancellation grace period.
+    #[must_use]
+    pub fn with_cancellation_grace(mut self, grace: Duration) -> Self {
+        self.cancellation_grace = grace;
+        self
+    }
+
+    /// Reports tasks currently owned and reaped by the detachment supervisor.
+    #[must_use]
+    pub fn supervised_detached_tasks(&self) -> usize {
+        self.supervisor.active()
     }
 
     /// Starts one root pipeline scope.
@@ -378,8 +492,20 @@ impl ProductionPipelineExecutor {
         let cancellation = PipelineCancellation::default();
         let executor = self.clone();
         let child_cancellation = cancellation.clone();
-        let task = tokio::spawn(async move { executor.run(plan, input, child_cancellation).await });
-        PipelineHandle { cancellation, task }
+        let events = LifecycleLog::new(self.event_capacity);
+        let child_events = events.clone();
+        let task = tokio::spawn(async move {
+            executor
+                .run(plan, input, child_cancellation, child_events)
+                .await
+        });
+        PipelineHandle {
+            cancellation,
+            task,
+            events,
+            cancellation_grace: self.cancellation_grace,
+            supervisor: self.supervisor.clone(),
+        }
     }
 
     async fn run(
@@ -387,28 +513,55 @@ impl ProductionPipelineExecutor {
         plan: PipelinePlan,
         input: String,
         cancellation: PipelineCancellation,
-    ) -> Result<PipelineOutcome, StageError> {
-        let mut events = Vec::with_capacity(self.event_capacity);
+        events: LifecycleLog,
+    ) -> Result<PipelineOutcome, PipelineFailure> {
         events.push(PipelineEvent::Started);
+        let result = self.run_groups(plan, input, cancellation, &events).await;
+        match result {
+            Ok(output) => {
+                events.push(PipelineEvent::Completed);
+                Ok(PipelineOutcome {
+                    output,
+                    events: events.snapshot(),
+                })
+            }
+            Err(error) => {
+                if error == StageError::Cancelled {
+                    events.cancelled();
+                }
+                Err(PipelineFailure {
+                    error,
+                    events: events.snapshot(),
+                })
+            }
+        }
+    }
+
+    async fn run_groups(
+        &self,
+        plan: PipelinePlan,
+        input: String,
+        cancellation: PipelineCancellation,
+        events: &LifecycleLog,
+    ) -> Result<Vec<String>, StageError> {
         let mut outputs = vec![input];
         for group in plan.groups {
             if cancellation.is_cancelled() {
-                events.push(PipelineEvent::Cancelled);
                 return Err(StageError::Cancelled);
             }
             match group {
-                StageGroup::Serial(stages) => {
+                PipelineGroup::Serial(stages) => {
                     let mut output = outputs.pop().ok_or_else(|| StageError::Fatal {
                         message: "serial stage has no input".into(),
                     })?;
                     for stage in stages {
                         output = self
-                            .run_stage(stage, output, cancellation.clone(), &mut events)
+                            .run_stage(stage, output, cancellation.clone(), events)
                             .await?;
                     }
                     outputs = vec![output];
                 }
-                StageGroup::FanOut(stages, join) => {
+                PipelineGroup::FanOut(stages, join) => {
                     let input = outputs.pop().ok_or_else(|| StageError::Fatal {
                         message: "fan-out has no input".into(),
                     })?;
@@ -416,7 +569,7 @@ impl ProductionPipelineExecutor {
                         width: stages.len(),
                     });
                     outputs = self
-                        .run_fan_out(stages, join, input, cancellation.clone(), &mut events)
+                        .run_fan_out(stages, join, input, cancellation.clone(), events)
                         .await?;
                     events.push(PipelineEvent::Joined {
                         count: outputs.len(),
@@ -424,11 +577,7 @@ impl ProductionPipelineExecutor {
                 }
             }
         }
-        events.push(PipelineEvent::Completed);
-        Ok(PipelineOutcome {
-            output: outputs,
-            events,
-        })
+        Ok(outputs)
     }
 
     async fn run_fan_out(
@@ -437,7 +586,7 @@ impl ProductionPipelineExecutor {
         join: JoinPolicy,
         input: String,
         cancellation: PipelineCancellation,
-        events: &mut Vec<PipelineEvent>,
+        events: &LifecycleLog,
     ) -> Result<Vec<String>, StageError> {
         let semaphore = Arc::new(Semaphore::new(self.max_fan_out));
         let mut children = JoinSet::new();
@@ -447,23 +596,37 @@ impl ProductionPipelineExecutor {
             let input = input.clone();
             let cancellation = cancellation.clone();
             children.spawn(async move {
-                let permit = semaphore
-                    .acquire_owned()
-                    .await
-                    .map_err(|_| StageError::Join)?;
-                let mut child_events = Vec::new();
+                let Ok(permit) = semaphore.acquire_owned().await else {
+                    return (index, Err(StageError::Join), Vec::new());
+                };
+                let child_events = LifecycleLog::new(executor.event_capacity);
                 let result = executor
-                    .run_stage(stage, input, cancellation, &mut child_events)
+                    .run_stage(stage, input, cancellation, &child_events)
                     .await;
                 drop(permit);
-                result.map(|output| (index, output, child_events))
+                (index, result, child_events.snapshot())
             });
         }
         let mut results = Vec::new();
+        let mut failure = None;
         while let Some(result) = children.join_next().await {
-            let (index, output, child_events) = flatten_join(result)?;
-            events.extend(child_events);
-            results.push((index, output));
+            if let Ok((index, result, child_events)) = result {
+                events.extend(child_events);
+                match result {
+                    Ok(output) if failure.is_none() => results.push((index, output)),
+                    Ok(_) => {}
+                    Err(error) => {
+                        cancellation.cancel();
+                        failure.get_or_insert(error);
+                    }
+                }
+            } else {
+                cancellation.cancel();
+                failure.get_or_insert(StageError::Join);
+            }
+        }
+        if let Some(error) = failure {
+            return Err(error);
         }
         if join == JoinPolicy::PreserveInputOrder {
             results.sort_by_key(|(index, _)| *index);
@@ -476,7 +639,7 @@ impl ProductionPipelineExecutor {
         stage: Stage,
         input: String,
         cancellation: PipelineCancellation,
-        events: &mut Vec<PipelineEvent>,
+        events: &LifecycleLog,
     ) -> Result<String, StageError> {
         self.check_circuit(&stage).await?;
         let name = stage.name.clone();
@@ -512,7 +675,7 @@ impl ProductionPipelineExecutor {
         stage: &Stage,
         input: String,
         cancellation: PipelineCancellation,
-        events: &mut Vec<PipelineEvent>,
+        events: &LifecycleLog,
     ) -> Result<String, StageError> {
         for attempt in 1..=stage.retry.max_attempts {
             if cancellation.is_cancelled() {
@@ -590,14 +753,13 @@ impl ProductionPipelineExecutor {
     }
 }
 
-fn flatten_join(result: JoinedBranch) -> Result<BranchOutput, StageError> {
-    result.map_err(|_| StageError::Join)?
-}
-
 /// Running structured pipeline scope.
 pub struct PipelineHandle {
     cancellation: PipelineCancellation,
-    task: tokio::task::JoinHandle<Result<PipelineOutcome, StageError>>,
+    task: tokio::task::JoinHandle<Result<PipelineOutcome, PipelineFailure>>,
+    events: LifecycleLog,
+    cancellation_grace: Duration,
+    supervisor: DetachedTaskSupervisor,
 }
 
 impl PipelineHandle {
@@ -612,7 +774,36 @@ impl PipelineHandle {
     ///
     /// Returns stage policy failures, cancellation, deadline, circuit, or child
     /// join failure.
-    pub async fn wait(self) -> Result<PipelineOutcome, StageError> {
-        self.task.await.map_err(|_| StageError::Join)?
+    pub async fn wait(mut self) -> Result<PipelineOutcome, PipelineFailure> {
+        tokio::select! {
+            result = &mut self.task => flatten_pipeline_join(result, &self.events),
+            () = self.cancellation.cancelled() => {
+                self.events.cancelled();
+                if let Ok(result) = timeout(self.cancellation_grace, &mut self.task).await {
+                    flatten_pipeline_join(result, &self.events)
+                } else {
+                    self.events.push(PipelineEvent::CancellationGraceElapsed {
+                        grace_millis: u64::try_from(self.cancellation_grace.as_millis())
+                            .unwrap_or(u64::MAX),
+                    });
+                    self.events.push(PipelineEvent::TaskDetached);
+                    self.supervisor.supervise(self.task);
+                    Err(PipelineFailure {
+                        error: StageError::Cancelled,
+                        events: self.events.snapshot(),
+                    })
+                }
+            }
+        }
     }
+}
+
+fn flatten_pipeline_join(
+    result: Result<Result<PipelineOutcome, PipelineFailure>, JoinError>,
+    events: &LifecycleLog,
+) -> Result<PipelineOutcome, PipelineFailure> {
+    result.map_err(|_| PipelineFailure {
+        error: StageError::Join,
+        events: events.snapshot(),
+    })?
 }

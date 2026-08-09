@@ -99,3 +99,22 @@ fn await_outside_async_function_is_rejected_at_await_expression() {
         ["SYL2501"]
     );
 }
+
+#[test]
+fn borrowed_string_parameters_are_rejected_across_await() {
+    let compilation = compile(
+        "borrowed.syl",
+        "fn ready(value: U64) -> U64 { value } async fn bad(value: Str) -> U64 { await ready(1) }",
+    );
+    assert!(compilation.diagnostics.is_empty());
+    let hir = lower_to_hir(
+        compilation.ast.as_ref().unwrap(),
+        compilation.symbols.as_ref().unwrap(),
+    )
+    .unwrap();
+    let error = lower_async_state_machines(&hir).unwrap_err();
+    assert!(matches!(
+        error,
+        syllog_compiler::AsyncLowerError::BorrowAcrossAwait { .. }
+    ));
+}

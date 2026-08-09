@@ -163,3 +163,36 @@ max_memory_bytes = 65536
     );
     assert_eq!(run.stdout, b"84\n");
 }
+
+#[test]
+fn project_build_exports_resumable_async_frame_steps() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("async-app");
+    let created = Command::new(env!("CARGO_BIN_EXE_syllog"))
+        .args(["new", "async-app", "--template", "basic"])
+        .current_dir(directory.path())
+        .output()
+        .unwrap();
+    assert!(created.status.success());
+    std::fs::write(
+        root.join("src/main.syl"),
+        "module app;\nfn ready(value: U64) -> U64 { value }\nasync fn job() -> U64 { await ready(7) }\nfn main() -> U64 { 0 }\n",
+    )
+    .unwrap();
+    let artifact = root.join("target/async.wasm");
+    let output = Command::new(env!("CARGO_BIN_EXE_syllog"))
+        .args(["build", ".", "--output", artifact.to_str().unwrap()])
+        .current_dir(&root)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::from_file(&engine, artifact).unwrap();
+    assert!(module.exports().any(
+        |export| export.name().starts_with("syllog_async_") && export.name().ends_with("_step")
+    ));
+}

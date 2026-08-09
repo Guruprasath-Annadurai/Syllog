@@ -1,5 +1,9 @@
 //! Local-model streaming-frame adapter for the Syllog provider ABI.
 
+mod transport;
+
+pub use transport::{LocalProcessTransport, LocalSocketTransport, LocalTransportConfigError};
+
 use std::sync::Arc;
 
 use serde_json::Value;
@@ -28,6 +32,18 @@ impl LocalModelAdapter {
             transport,
         }
     }
+
+    /// Creates an adapter backed by one explicitly authorized local process.
+    #[must_use]
+    pub fn process(transport: LocalProcessTransport) -> Self {
+        Self::new(Arc::new(transport))
+    }
+
+    /// Creates an adapter backed by one explicitly authorized loopback socket.
+    #[must_use]
+    pub fn socket(transport: LocalSocketTransport) -> Self {
+        Self::new(Arc::new(transport))
+    }
 }
 
 impl ProviderAdapter for LocalModelAdapter {
@@ -37,7 +53,7 @@ impl ProviderAdapter for LocalModelAdapter {
 
     fn stream(&self, request: ModelRequest, sink: TokenSink) -> ProviderFuture<'_> {
         Box::pin(async move {
-            let frames = self
+            let mut frames = self
                 .transport
                 .frames(TransportRequest {
                     provider: self.descriptor.name.clone(),
@@ -46,7 +62,7 @@ impl ProviderAdapter for LocalModelAdapter {
                     authorization: None,
                 })
                 .await?;
-            for frame in frames {
+            while let Some(frame) = frames.recv().await {
                 match frame {
                     TransportFrame::Data(data) => {
                         let value: Value = serde_json::from_str(&data).map_err(protocol_error)?;

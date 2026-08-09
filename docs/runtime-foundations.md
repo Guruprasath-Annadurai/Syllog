@@ -17,9 +17,19 @@ space. Dropping the receiver cancels further delivery without panicking.
 error. Provider failures become the final ordered stream event, after any tokens
 already delivered.
 
-This slice executes one provider invocation. Provider authentication, network
-transports, retries, circuit-breaker state transitions, multi-stage transforms,
-and AST-to-runtime lowering are not part of it yet.
+OpenAI and Anthropic adapters can use a bounded incremental HTTP/SSE transport.
+It validates HTTPS except for loopback contract servers, installs
+provider-specific authentication headers, enforces response/event limits, and
+normalizes authentication, rate-limit, timeout, protocol, and availability
+failures. `Retry-After` is retained as typed metadata; retry policy remains an
+explicit pipeline decision. The local adapter supports an explicitly configured
+child process or loopback TCP socket without invoking a shell.
+
+The multi-stage executor provides serial and bounded fan-out groups, retry and
+deadline policies, shared circuit breakers, structured cancellation, retained
+failure lifecycle events, and supervised cleanup after a configurable grace
+period. It does not place prompts, tokens, or provider credentials in lifecycle
+events.
 
 ## Wasmtime sandbox policy
 
