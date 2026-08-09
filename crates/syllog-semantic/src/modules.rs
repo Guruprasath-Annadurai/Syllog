@@ -564,6 +564,18 @@ fn item_signature(item: &Item) -> String {
 
 fn type_signature(ty: &TypeNode) -> String {
     match &ty.kind {
+        TypeKind::Reference {
+            lifetime,
+            mutable,
+            inner,
+        } => format!(
+            "&{}{}{}",
+            lifetime
+                .as_ref()
+                .map_or_else(String::new, |name| format!("'{name} ")),
+            if *mutable { "mut " } else { "" },
+            type_signature(inner)
+        ),
         TypeKind::Path {
             segments,
             arguments,

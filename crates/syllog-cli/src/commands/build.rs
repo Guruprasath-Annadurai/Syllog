@@ -5,7 +5,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use anyhow::{Context, bail};
-use syllog_codegen_wasm::{WasmOptions, emit_with_async_frames};
+use syllog_codegen_wasm::{WasmOptions, emit_with_capabilities};
 
 /// Builds one source file into a deterministic Wasm artifact.
 pub fn execute(path: &Path, target: &str, output: &Path) -> anyhow::Result<ExitCode> {
@@ -15,9 +15,13 @@ pub fn execute(path: &Path, target: &str, output: &Path) -> anyhow::Result<ExitC
     let Some(program) = super::compile_program(path)? else {
         return Ok(ExitCode::FAILURE);
     };
-    let artifact =
-        emit_with_async_frames(&program.mir, &program.async_frames, &WasmOptions::default())
-            .context("Wasm code generation failed")?;
+    let artifact = emit_with_capabilities(
+        &program.mir,
+        &program.async_frames,
+        &program.capabilities,
+        &WasmOptions::default(),
+    )
+    .context("Wasm code generation failed")?;
     if let Some(parent) = output.parent()
         && !parent.as_os_str().is_empty()
     {

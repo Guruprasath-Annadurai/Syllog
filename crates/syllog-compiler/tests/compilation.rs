@@ -15,6 +15,8 @@ fn successful_compilation_runs_every_frontend_phase() {
             CompilationPhase::Validate,
             CompilationPhase::Resolve,
             CompilationPhase::TypeCheck,
+            CompilationPhase::Ownership,
+            CompilationPhase::EffectCheck,
         ]
     );
     assert!(compilation.ast.is_some());
@@ -57,7 +59,7 @@ fn label(color: Color) -> String {
     assert!(phases.contains(&CompilationPhase::TypeCheck));
     assert_eq!(
         compilation.completed_phases.last(),
-        Some(&CompilationPhase::TypeCheck)
+        Some(&CompilationPhase::Ownership)
     );
 }
 

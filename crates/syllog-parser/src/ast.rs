@@ -85,6 +85,15 @@ pub struct TypeNode {
 /// Supported type forms in the current front end.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TypeKind {
+    /// A shared or exclusive reference with an optional named lifetime.
+    Reference {
+        /// Explicit lifetime such as `'request`, without the leading quote.
+        lifetime: Option<String>,
+        /// Whether this is an exclusive mutable borrow.
+        mutable: bool,
+        /// Referenced type.
+        inner: Box<TypeNode>,
+    },
     /// A qualified path with optional generic arguments.
     Path {
         /// Qualified path segments.
@@ -210,9 +219,20 @@ pub struct FunctionNode {
     pub parameters: Vec<Parameter>,
     /// Optional result type; absence means `()`.
     pub return_type: Option<TypeNode>,
+    /// Explicit upper bound on effects; an absent set is inferred for private functions.
+    pub effects: Option<Vec<EffectNode>>,
     /// Function body.
     pub body: Block,
     /// Full declaration range.
+    pub span: Span,
+}
+
+/// One source-spanned function effect declaration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EffectNode {
+    /// Canonical source spelling.
+    pub name: String,
+    /// Exact effect-name range.
     pub span: Span,
 }
 
@@ -294,6 +314,13 @@ pub struct Expr {
 /// Supported expression forms.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ExprKind {
+    /// Creates a shared or exclusive lexical borrow.
+    Borrow {
+        /// Whether the borrow is exclusive and mutable.
+        mutable: bool,
+        /// Borrowed place expression.
+        operand: Box<Expr>,
+    },
     /// Suspends the enclosing async function until the operand is ready.
     Await(Box<Expr>),
     /// A scalar literal.

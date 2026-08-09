@@ -2,12 +2,14 @@
 
 mod async_lower;
 pub mod database;
+mod effects;
 pub mod hir;
 mod lower;
 mod mir_lower;
 mod package;
 
 pub use async_lower::{AsyncLowerError, lower_async_state_machines};
+pub use effects::{EffectAnalysis, EffectError, analyze_effects};
 pub use lower::lower_to_hir;
 pub use mir_lower::lower_to_mir;
 pub use package::{PackageCompilation, PackageSource, compile_package};
@@ -30,6 +32,10 @@ pub enum CompilationPhase {
     Resolve,
     /// Expression and contract type checking.
     TypeCheck,
+    /// Affine ownership, borrowing, and region checking.
+    Ownership,
+    /// Whole-program effect inference and bound validation.
+    EffectCheck,
 }
 
 impl std::fmt::Display for CompilationPhase {
@@ -39,6 +45,8 @@ impl std::fmt::Display for CompilationPhase {
             Self::Validate => "validate",
             Self::Resolve => "resolve",
             Self::TypeCheck => "type_check",
+            Self::Ownership => "ownership",
+            Self::EffectCheck => "effect_check",
         })
     }
 }
@@ -121,16 +129,51 @@ pub fn compile(file: impl Into<String>, source: &str) -> Compilation {
                 diagnostic,
             }),
     );
+    let effect_eligible = diagnostics
+        .iter()
+        .all(|diagnostic| diagnostic.severity != Severity::Error);
+    let mut ran_effects = false;
+    if effect_eligible {
+        match lower_to_hir(&ast, &analysis.symbols) {
+            Ok(hir) => {
+                ran_effects = true;
+                if let Err(effect_errors) = analyze_effects(&hir) {
+                    diagnostics.extend(effect_errors.into_iter().map(|error| CompilerDiagnostic {
+                        phase: CompilationPhase::EffectCheck,
+                        diagnostic: Diagnostic {
+                            code: error.code.into(),
+                            severity: Severity::Error,
+                            message: error.message,
+                            file: file.clone(),
+                            span: error.span,
+                        },
+                    }));
+                }
+            }
+            Err(hir_errors) => diagnostics.extend(hir_errors.into_iter().map(|mut diagnostic| {
+                diagnostic.file.clone_from(&file);
+                CompilerDiagnostic {
+                    phase: CompilationPhase::TypeCheck,
+                    diagnostic,
+                }
+            })),
+        }
+    }
+    let mut completed_phases = vec![
+        CompilationPhase::Parse,
+        CompilationPhase::Validate,
+        CompilationPhase::Resolve,
+        CompilationPhase::TypeCheck,
+        CompilationPhase::Ownership,
+    ];
+    if ran_effects {
+        completed_phases.push(CompilationPhase::EffectCheck);
+    }
     Compilation {
         file,
         ast: Some(ast),
         symbols: Some(analysis.symbols),
-        completed_phases: vec![
-            CompilationPhase::Parse,
-            CompilationPhase::Validate,
-            CompilationPhase::Resolve,
-            CompilationPhase::TypeCheck,
-        ],
+        completed_phases,
         diagnostics,
     }
 }
@@ -146,6 +189,8 @@ fn parser_phase(code: &str) -> CompilationPhase {
 fn semantic_phase(code: &str) -> CompilationPhase {
     if matches!(code, "SYL2001" | "SYL2002" | "SYL2003" | "SYL2004") {
         CompilationPhase::Resolve
+    } else if code.starts_with("SYL26") {
+        CompilationPhase::Ownership
     } else {
         CompilationPhase::TypeCheck
     }

@@ -38,6 +38,15 @@ pub enum PrimitiveType {
 /// A type after name and generic-argument resolution.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ResolvedType {
+    /// Lexical shared or exclusive reference.
+    Reference {
+        /// Explicit region name when written on the public boundary.
+        region: Option<String>,
+        /// Whether the reference grants exclusive mutation.
+        mutable: bool,
+        /// Referenced type.
+        inner: Box<ResolvedType>,
+    },
     /// Built-in primitive.
     Primitive(PrimitiveType),
     /// User product type.
@@ -80,6 +89,20 @@ pub struct ExpressionType {
 impl std::fmt::Display for ResolvedType {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Reference {
+                region,
+                mutable,
+                inner,
+            } => {
+                formatter.write_str("&")?;
+                if let Some(region) = region {
+                    write!(formatter, "'{region} ")?;
+                }
+                if *mutable {
+                    formatter.write_str("mut ")?;
+                }
+                write!(formatter, "{inner}")
+            }
             Self::Primitive(primitive) => write!(formatter, "{primitive:?}"),
             Self::Struct(name) | Self::Enum(name) | Self::State(name) => formatter.write_str(name),
             Self::Option(inner) => write!(formatter, "Option<{inner}>"),

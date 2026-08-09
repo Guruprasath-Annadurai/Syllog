@@ -95,13 +95,28 @@ pub fn compile_package(mut sources: Vec<PackageSource>) -> PackageCompilation {
         &mut identities,
         &mut diagnostics,
     );
+    let hir = HirProgram {
+        schema_version: 1,
+        modules,
+        entry,
+    };
+    if !has_errors(&diagnostics)
+        && let Err(effect_errors) = crate::analyze_effects(&hir)
+    {
+        diagnostics.extend(effect_errors.into_iter().map(|error| CompilerDiagnostic {
+            phase: CompilationPhase::EffectCheck,
+            diagnostic: Diagnostic {
+                code: error.code.into(),
+                severity: Severity::Error,
+                message: error.message,
+                file: "<package>".into(),
+                span: error.span,
+            },
+        }));
+    }
     sort_diagnostics(&mut diagnostics);
     PackageCompilation {
-        hir: (!has_errors(&diagnostics)).then_some(HirProgram {
-            schema_version: 1,
-            modules,
-            entry,
-        }),
+        hir: (!has_errors(&diagnostics)).then_some(hir),
         diagnostics,
     }
 }

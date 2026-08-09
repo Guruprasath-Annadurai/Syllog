@@ -1,6 +1,6 @@
 //! Typed HIR to verified control-flow MIR lowering.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use syllog_ir::{
     BasicBlock, BinaryOp, BlockId, Constant, DefId as MirDefId, LocalId, MirFunction, MirProgram,
@@ -38,10 +38,11 @@ pub fn lower_to_mir(hir: &HirProgram) -> Result<MirProgram, Vec<Diagnostic>> {
     if !diagnostics.is_empty() {
         return Err(diagnostics);
     }
-    let program = MirProgram {
+    let mut program = MirProgram {
         functions,
         entry: hir.entry.map(mir_def_id),
     };
+    insert_drops(&mut program);
     if let Err(errors) = verify(&program) {
         return Err(errors
             .into_iter()
@@ -49,6 +50,183 @@ pub fn lower_to_mir(hir: &HirProgram) -> Result<MirProgram, Vec<Diagnostic>> {
             .collect());
     }
     Ok(program)
+}
+
+fn insert_drops(program: &mut MirProgram) {
+    for function in &mut program.functions {
+        insert_function_drops(function);
+    }
+}
+
+fn insert_function_drops(function: &mut MirFunction) {
+    if function.blocks.is_empty() {
+        return;
+    }
+    let reachable = mir_reachable(function);
+    let universe = (0..function.locals.len())
+        .filter_map(|index| u32::try_from(index).ok().map(LocalId))
+        .collect::<BTreeSet<_>>();
+    let parameters = (1..=function.parameter_count).map(LocalId).collect();
+    let mut incoming = reachable
+        .iter()
+        .map(|reachable| reachable.then(|| universe.clone()))
+        .collect::<Vec<_>>();
+    incoming[0] = Some(parameters);
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for (index, block) in function.blocks.iter().enumerate() {
+            let Some(mut state) = incoming[index].clone() else {
+                continue;
+            };
+            mir_transfer(block, &mut state);
+            if let Some(terminator) = &block.terminator {
+                for successor in mir_successors(terminator) {
+                    let Ok(successor) = usize::try_from(successor.0) else {
+                        continue;
+                    };
+                    if successor >= incoming.len() || !reachable[successor] {
+                        continue;
+                    }
+                    let merged = incoming[successor]
+                        .as_ref()
+                        .map(|current| current.intersection(&state).copied().collect());
+                    if merged != incoming[successor] {
+                        incoming[successor] = merged;
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+    let local_types = function.locals.clone();
+    for (index, block) in function.blocks.iter_mut().enumerate() {
+        let Some(mut state) = incoming[index].clone() else {
+            continue;
+        };
+        mir_transfer_statements(&block.statements, &mut state);
+        let drop_candidates = match block.terminator.as_ref() {
+            Some(Terminator::Return) => state,
+            Some(Terminator::Goto(target)) => usize::try_from(target.0)
+                .ok()
+                .and_then(|target| incoming.get(target))
+                .and_then(Clone::clone)
+                .map_or_else(BTreeSet::new, |next| {
+                    state.difference(&next).copied().collect()
+                }),
+            _ => BTreeSet::new(),
+        };
+        for local in drop_candidates.into_iter().rev() {
+            if local != LocalId(0)
+                && local_types
+                    .get(usize::try_from(local.0).unwrap_or(usize::MAX))
+                    .is_some_and(mir_type_needs_drop)
+            {
+                block.statements.push(Statement::Drop(Place::Local(local)));
+            }
+        }
+    }
+}
+
+fn mir_reachable(function: &MirFunction) -> Vec<bool> {
+    let mut reachable = vec![false; function.blocks.len()];
+    let mut queue = VecDeque::from([BlockId(0)]);
+    while let Some(block) = queue.pop_front() {
+        let Ok(index) = usize::try_from(block.0) else {
+            continue;
+        };
+        if index >= reachable.len() || reachable[index] {
+            continue;
+        }
+        reachable[index] = true;
+        if let Some(terminator) = &function.blocks[index].terminator {
+            queue.extend(mir_successors(terminator));
+        }
+    }
+    reachable
+}
+
+fn mir_transfer(block: &BasicBlock, state: &mut BTreeSet<LocalId>) {
+    mir_transfer_statements(&block.statements, state);
+    if let Some(terminator) = &block.terminator {
+        match terminator {
+            Terminator::SwitchInt { value, .. } => mir_consume_operand(value, state),
+            Terminator::Call {
+                args, destination, ..
+            } => {
+                for argument in args {
+                    mir_consume_operand(argument, state);
+                }
+                if let Place::Local(local) = destination {
+                    state.insert(*local);
+                }
+            }
+            Terminator::Return | Terminator::Goto(_) => {}
+        }
+    }
+}
+
+fn mir_transfer_statements(statements: &[Statement], state: &mut BTreeSet<LocalId>) {
+    for statement in statements {
+        match statement {
+            Statement::Assign { destination, value } => {
+                match value {
+                    Rvalue::Use(operand) | Rvalue::Discriminant(operand) => {
+                        mir_consume_operand(operand, state);
+                    }
+                    Rvalue::Aggregate { fields, .. } => {
+                        for field in fields {
+                            mir_consume_operand(field, state);
+                        }
+                    }
+                    Rvalue::Binary { left, right, .. } => {
+                        mir_consume_operand(left, state);
+                        mir_consume_operand(right, state);
+                    }
+                    Rvalue::Borrow { .. } => {}
+                }
+                if let Place::Local(local) = destination {
+                    state.insert(*local);
+                }
+            }
+            Statement::Drop(place) => {
+                state.remove(&mir_place_local(place));
+            }
+        }
+    }
+}
+
+fn mir_consume_operand(operand: &Operand, state: &mut BTreeSet<LocalId>) {
+    if let Operand::Move(local) = operand {
+        state.remove(local);
+    }
+}
+
+fn mir_place_local(place: &Place) -> LocalId {
+    match place {
+        Place::Local(local) => *local,
+        Place::Field { base, .. } => *base,
+    }
+}
+
+fn mir_successors(terminator: &Terminator) -> Vec<BlockId> {
+    match terminator {
+        Terminator::Return => Vec::new(),
+        Terminator::Goto(target) => vec![*target],
+        Terminator::SwitchInt {
+            targets, otherwise, ..
+        } => targets
+            .iter()
+            .map(|(_, target)| *target)
+            .chain(std::iter::once(*otherwise))
+            .collect(),
+        Terminator::Call { next, .. } => vec![*next],
+    }
+}
+
+fn mir_type_needs_drop(ty: &MirType) -> bool {
+    matches!(ty, MirType::String | MirType::Aggregate(_))
+        || matches!(ty, MirType::Reference { mutable: true, .. })
 }
 
 struct ProgramIndex {
@@ -103,6 +281,10 @@ impl ProgramIndex {
             ResolvedType::Primitive(PrimitiveType::Unsigned(width)) if width == "U64" => {
                 Some(MirType::U64)
             }
+            ResolvedType::Reference { mutable, inner, .. } => Some(MirType::Reference {
+                mutable: *mutable,
+                inner: Box::new(self.lower_type(inner)?),
+            }),
             ResolvedType::Struct(name) | ResolvedType::Enum(name) | ResolvedType::State(name) => {
                 self.types.get(name).copied().map(MirType::Aggregate)
             }
@@ -215,6 +397,29 @@ impl<'a> FunctionBuilder<'a> {
 
     fn lower_expression(&mut self, expression: &TypedExpr, expected: Option<&MirType>) -> Operand {
         match &expression.kind {
+            HirExprKind::Borrow { mutable, operand } => {
+                let HirExprKind::Reference { definition } = operand.kind else {
+                    self.error(expression.span, "MIR borrows require a direct local place");
+                    return Operand::Constant(Constant::Unit);
+                };
+                let Some(local) = self.bindings.get(&definition).copied() else {
+                    self.error(expression.span, "MIR borrow target is not a local");
+                    return Operand::Constant(Constant::Unit);
+                };
+                let ty = self
+                    .index
+                    .lower_type(&expression.ty)
+                    .unwrap_or(MirType::Unit);
+                let reference = self.new_local(ty);
+                self.assign(
+                    Place::Local(reference),
+                    Rvalue::Borrow {
+                        mutable: *mutable,
+                        place: Place::Local(local),
+                    },
+                );
+                Operand::Move(reference)
+            }
             HirExprKind::Await(operand) => self.lower_expression(operand, expected),
             HirExprKind::Literal(literal) => self.lower_literal(literal, expression, expected),
             HirExprKind::Reference { definition } => {
@@ -248,7 +453,15 @@ impl<'a> FunctionBuilder<'a> {
 
     fn lower_reference(&mut self, definition: DefId, span: Span) -> Operand {
         if let Some(local) = self.bindings.get(&definition) {
-            Operand::Copy(*local)
+            if self
+                .locals
+                .get(usize::try_from(local.0).unwrap_or(usize::MAX))
+                .is_some_and(mir_type_is_copy)
+            {
+                Operand::Copy(*local)
+            } else {
+                Operand::Move(*local)
+            }
         } else if let Some((aggregate, discriminant)) = self.index.variants.get(&definition) {
             let aggregate = *aggregate;
             let discriminant = *discriminant;
@@ -482,6 +695,13 @@ impl<'a> FunctionBuilder<'a> {
         self.diagnostics
             .push(mir_diagnostic(span, "SYL3101", message));
     }
+}
+
+fn mir_type_is_copy(ty: &MirType) -> bool {
+    matches!(
+        ty,
+        MirType::Unit | MirType::Bool | MirType::I64 | MirType::U64
+    ) || matches!(ty, MirType::Reference { mutable: false, .. })
 }
 
 fn lower_binary(operator: BinaryOperator) -> Option<BinaryOp> {

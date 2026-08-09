@@ -51,6 +51,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 wasmtime = { version = "36.0", default-features = false, features = ["cranelift", "runtime"] }
 wat = "1.236"
 wasm-encoder = "0.236.1"
+wasmparser = "0.236.1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -7,9 +7,9 @@ use std::fmt::Write as _;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use syllog_ir::{
-    AsyncStateMachine, AsyncTransition, AsyncVerificationError, BasicBlock, BinaryOp, Constant,
-    DefId, LocalId, MirFunction, MirProgram, MirType, Operand, Place, Rvalue, Statement,
-    Terminator, VerificationError, verify, verify_async_machine,
+    AsyncStateMachine, AsyncTransition, AsyncVerificationError, BasicBlock, BinaryOp,
+    CapabilityManifest, Constant, DefId, LocalId, MirFunction, MirProgram, MirType, Operand, Place,
+    Rvalue, Statement, Terminator, VerificationError, verify, verify_async_machine,
 };
 use wasm_encoder::{
     BlockType, CodeSection, CustomSection, ExportKind, ExportSection, Function, FunctionSection,
@@ -27,6 +27,8 @@ pub struct ArtifactMetadata {
     pub source_hash: [u8; 32],
     /// Number of resumable async frames emitted into the artifact.
     pub async_frame_count: u32,
+    /// Static effect requirements enforced by the runtime.
+    pub capabilities: CapabilityManifest,
 }
 
 /// Deterministic Wasm emission controls.
@@ -101,6 +103,25 @@ pub fn emit_with_async_frames(
     async_frames: &[AsyncStateMachine],
     options: &WasmOptions,
 ) -> Result<WasmArtifact, CodegenError> {
+    emit_with_capabilities(
+        program,
+        async_frames,
+        &CapabilityManifest::default(),
+        options,
+    )
+}
+
+/// Emits verified MIR, resumable async frames, and a signed-input capability manifest.
+///
+/// # Errors
+///
+/// Returns verification, unsupported-ABI, missing-entry, or encoding errors.
+pub fn emit_with_capabilities(
+    program: &MirProgram,
+    async_frames: &[AsyncStateMachine],
+    capabilities: &CapabilityManifest,
+    options: &WasmOptions,
+) -> Result<WasmArtifact, CodegenError> {
     verify(program).map_err(CodegenError::InvalidMir)?;
     for frame in async_frames {
         verify_async_machine(frame).map_err(CodegenError::InvalidAsyncFrame)?;
@@ -169,13 +190,15 @@ pub fn emit_with_async_frames(
         code.function(&encode_async_frame(frame)?);
     }
 
-    let canonical = serde_json::to_vec(&(program, async_frames)).map_err(CodegenError::Encoding)?;
+    let canonical = serde_json::to_vec(&(program, async_frames, capabilities))
+        .map_err(CodegenError::Encoding)?;
     let source_hash: [u8; 32] = Sha256::digest(&canonical).into();
     let metadata = ArtifactMetadata {
         format_version: 1,
         entry,
         source_hash,
         async_frame_count: u32::try_from(async_frames.len()).unwrap_or(u32::MAX),
+        capabilities: capabilities.clone(),
     };
     let source_map = encode_source_map(program, *options);
     let mut module = Module::new();
@@ -193,6 +216,10 @@ pub fn emit_with_async_frames(
             data: Cow::Owned(serde_json::to_vec(async_frames).map_err(CodegenError::Encoding)?),
         });
     }
+    module.section(&CustomSection {
+        name: Cow::Borrowed("syllog.capabilities"),
+        data: Cow::Owned(serde_json::to_vec(capabilities).map_err(CodegenError::Encoding)?),
+    });
     Ok(WasmArtifact {
         bytes: module.finish(),
         metadata,
@@ -269,12 +296,23 @@ fn supported_signature(function: &MirFunction) -> Result<(), CodegenError> {
         match ty {
             MirType::Unit | MirType::Bool | MirType::I64 | MirType::U64 | MirType::Aggregate(_) => {
             }
+            MirType::Reference { inner, .. } => supported_abi_type(inner)?,
             unsupported @ MirType::String => {
                 return Err(CodegenError::UnsupportedType(unsupported.clone()));
             }
         }
     }
     Ok(())
+}
+
+fn supported_abi_type(ty: &MirType) -> Result<(), CodegenError> {
+    match ty {
+        MirType::Unit | MirType::Bool | MirType::I64 | MirType::U64 | MirType::Aggregate(_) => {
+            Ok(())
+        }
+        MirType::Reference { inner, .. } => supported_abi_type(inner),
+        MirType::String => Err(CodegenError::UnsupportedType(ty.clone())),
+    }
 }
 
 fn encode_function(
@@ -387,6 +425,15 @@ fn encode_rvalue(
     value: &Rvalue,
 ) -> Result<(), CodegenError> {
     match value {
+        Rvalue::Borrow { place, .. } => match place {
+            Place::Local(local) => {
+                function.instruction(&Instruction::LocalGet(wasm_local(mir, *local)));
+                Ok(())
+            }
+            Place::Field { .. } => Err(CodegenError::UnsupportedOperation(
+                "aggregate field borrow".into(),
+            )),
+        },
         Rvalue::Use(operand) | Rvalue::Discriminant(operand) => {
             encode_operand(function, mir, operand)
         }

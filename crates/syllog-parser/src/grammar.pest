@@ -27,7 +27,7 @@ enum_variant = { identifier ~ ("(" ~ type_list? ~ ")")? ~ separator? }
 
 function_decl = {
     attribute* ~ visibility? ~ async_marker? ~ kw_fn ~ identifier
-    ~ parameters ~ return_type? ~ block
+    ~ parameters ~ return_type? ~ effect_set? ~ block
 }
 attribute = { "#[" ~ identifier ~ "]" }
 parameters = { "(" ~ parameter_list? ~ ")" }
@@ -51,7 +51,12 @@ property_block = { "{" ~ property* ~ "}" }
 property = { identifier ~ ":" ~ (typed_property | expression) ~ separator? }
 typed_property = { type_expr ~ "=" ~ expression }
 
-type_expr = { array_type | tuple_type | path_type }
+effect_set = { "!" ~ "{" ~ (effect_name ~ ("," ~ effect_name)* ~ ","?)? ~ "}" }
+effect_name = { identifier }
+
+type_expr = { reference_type | array_type | tuple_type | path_type }
+reference_type = { "&" ~ lifetime? ~ kw_mut? ~ type_expr }
+lifetime = @{ "'" ~ ident_start ~ ident_continue* }
 array_type = { "[" ~ type_expr ~ "]" }
 tuple_type = { "(" ~ type_list? ~ ")" }
 type_list = _{ type_expr ~ ("," ~ type_expr)* ~ ","? }
@@ -73,7 +78,8 @@ call_argument = { named_argument | expression }
 named_argument = { identifier ~ ":" ~ expression }
 field_suffix = { "." ~ identifier }
 
-primary = _{ await_expression | match_expression | array_expression | literal | path_expression | parenthesized | block }
+primary = _{ borrow_expression | await_expression | match_expression | array_expression | literal | path_expression | parenthesized | block }
+borrow_expression = { "&" ~ kw_mut? ~ expression }
 await_expression = { kw_await ~ expression }
 parenthesized = { "(" ~ expression ~ ")" }
 array_expression = { "[" ~ (expression ~ ("," ~ expression)* ~ ","?)? ~ "]" }
@@ -138,3 +144,4 @@ kw_module = @{ "module" ~ !ident_continue }
 kw_use = @{ "use" ~ !ident_continue }
 kw_as = @{ "as" ~ !ident_continue }
 kw_await = @{ "await" ~ !ident_continue }
+kw_mut = @{ "mut" ~ !ident_continue }

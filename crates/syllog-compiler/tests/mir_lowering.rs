@@ -1,7 +1,7 @@
 //! Typed HIR to verified MIR lowering contracts.
 
 use syllog_compiler::{lower_to_hir, lower_to_mir};
-use syllog_ir::{Rvalue, Statement, Terminator, verify};
+use syllog_ir::{LocalId, Place, Rvalue, Statement, Terminator, verify};
 use syllog_parser::parse_syl;
 use syllog_semantic::analyze;
 
@@ -89,4 +89,28 @@ fn choose(value: Choice) -> U64 {
                 }
             ))
     );
+}
+
+#[test]
+fn inserts_one_drop_for_each_owned_value_remaining_at_return() {
+    let program = mir(r#"
+        fn consume(value: String) -> U64 {
+            let temporary: String = "owned"
+            42
+        }
+        "#);
+    let drops = program.functions[0]
+        .blocks
+        .iter()
+        .flat_map(|block| &block.statements)
+        .filter_map(|statement| match statement {
+            Statement::Drop(Place::Local(local)) => Some(*local),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(drops.len(), 2, "parameter and local must each drop once");
+    assert!(drops.contains(&LocalId(1)));
+    assert!(drops.iter().all(|local| *local != LocalId(0)));
+    verify(&program).expect("drop-inserted MIR must satisfy affine verification");
 }

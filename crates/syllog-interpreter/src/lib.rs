@@ -12,6 +12,8 @@ use thiserror::Error;
 /// Public runtime value produced by reference execution.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RuntimeValue {
+    /// Statically validated reference value in the instrumented interpreter.
+    Reference(Box<RuntimeValue>),
     /// Unit.
     Unit,
     /// Boolean.
@@ -33,6 +35,8 @@ pub struct ExecutionResult {
     pub value: RuntimeValue,
     /// Bytes written through the standard output capability.
     pub stdout: Vec<u8>,
+    /// Number of successful explicit MIR drops, for conformance instrumentation.
+    pub drops_executed: u64,
 }
 
 /// Deterministic hard limits applied to one execution.
@@ -105,6 +109,7 @@ pub enum RuntimeError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Value {
+    Reference(Box<Value>),
     Unit,
     Bool(bool),
     I64(i64),
@@ -119,6 +124,7 @@ enum Value {
 impl Value {
     fn into_runtime(self) -> RuntimeValue {
         match self {
+            Self::Reference(value) => RuntimeValue::Reference(Box::new(value.into_runtime())),
             Self::Unit => RuntimeValue::Unit,
             Self::Bool(value) => RuntimeValue::Bool(value),
             Self::I64(value) => RuntimeValue::I64(value),
@@ -153,11 +159,13 @@ pub fn execute(
         instructions: 0,
         allocated_bytes: 0,
         stdout: Vec::new(),
+        drops_executed: 0,
     };
     let value = machine.call(entry, Vec::new(), 1)?;
     Ok(ExecutionResult {
         value: value.into_runtime(),
         stdout: machine.stdout,
+        drops_executed: machine.drops_executed,
     })
 }
 
@@ -167,6 +175,7 @@ struct Machine<'a> {
     instructions: u64,
     allocated_bytes: u64,
     stdout: Vec<u8>,
+    drops_executed: u64,
 }
 
 impl Machine<'_> {
@@ -266,7 +275,7 @@ impl Machine<'_> {
                 let value = self.rvalue(value, locals)?;
                 Self::assign(destination, value, locals)
             }
-            Statement::Drop(place) => Self::drop_place(place, locals),
+            Statement::Drop(place) => self.drop_place(place, locals),
         }
     }
 
@@ -276,6 +285,10 @@ impl Machine<'_> {
         locals: &mut [Option<Value>],
     ) -> Result<Value, RuntimeError> {
         match rvalue {
+            Rvalue::Borrow { place, .. } => Self::read_place(place, locals)
+                .cloned()
+                .map(Box::new)
+                .map(Value::Reference),
             Rvalue::Use(operand) => self.operand(operand, locals),
             Rvalue::Discriminant(operand) => match self.operand(operand, locals)? {
                 Value::Aggregate { discriminant, .. } => Ok(Value::U64(discriminant)),
@@ -414,10 +427,35 @@ impl Machine<'_> {
         }
     }
 
-    fn drop_place(place: &Place, locals: &mut [Option<Value>]) -> Result<(), RuntimeError> {
+    fn read_place<'a>(
+        place: &Place,
+        locals: &'a [Option<Value>],
+    ) -> Result<&'a Value, RuntimeError> {
+        match place {
+            Place::Local(local) => local_value(locals, *local),
+            Place::Field { base, field } => {
+                let aggregate = local_value(locals, *base)?;
+                let Value::Aggregate { fields, .. } = aggregate else {
+                    return trap_result("field base is not an aggregate");
+                };
+                fields
+                    .get(usize::try_from(*field).map_err(|_| trap("field index overflow"))?)
+                    .ok_or_else(|| trap("field index is out of range"))
+            }
+        }
+    }
+
+    fn drop_place(
+        &mut self,
+        place: &Place,
+        locals: &mut [Option<Value>],
+    ) -> Result<(), RuntimeError> {
         match place {
             Place::Local(local) => {
-                local_value_mut(locals, *local)?.take();
+                local_value_mut(locals, *local)?
+                    .take()
+                    .ok_or_else(|| trap("drop target is empty"))?;
+                self.drops_executed = self.drops_executed.saturating_add(1);
                 Ok(())
             }
             Place::Field { base, field } => {
@@ -431,6 +469,7 @@ impl Machine<'_> {
                 *fields
                     .get_mut(field)
                     .ok_or_else(|| trap("field index is out of range"))? = Value::Unit;
+                self.drops_executed = self.drops_executed.saturating_add(1);
                 Ok(())
             }
         }

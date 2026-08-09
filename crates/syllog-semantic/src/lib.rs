@@ -1,9 +1,11 @@
 //! Static semantic analysis for Syllog.
 
 mod modules;
+mod ownership;
 mod types;
 
 pub use modules::*;
+pub use ownership::*;
 pub use types::*;
 
 use serde::{Deserialize, Serialize};
@@ -68,6 +70,9 @@ pub fn analyze(file: &str, ast: &Ast) -> Analysis {
     analyzer.collect_declarations();
     analyzer.resolve_declarations();
     analyzer.check_bodies();
+    analyzer
+        .diagnostics
+        .extend(analyze_ownership(file, ast).diagnostics);
     Analysis {
         symbols: analyzer.symbols,
         diagnostics: analyzer.diagnostics,
@@ -87,6 +92,9 @@ fn analyze_with_imports(file: &str, ast: &Ast, imports: &[(&str, &Item)]) -> Ana
     }
     analyzer.resolve_declarations();
     analyzer.check_bodies();
+    analyzer
+        .diagnostics
+        .extend(analyze_ownership(file, ast).diagnostics);
     Analysis {
         symbols: analyzer.symbols,
         diagnostics: analyzer.diagnostics,
@@ -432,6 +440,15 @@ impl<'a> Analyzer<'a> {
 
     fn resolve_type(&mut self, node: &TypeNode) -> ResolvedType {
         match &node.kind {
+            TypeKind::Reference {
+                lifetime,
+                mutable,
+                inner,
+            } => ResolvedType::Reference {
+                region: lifetime.clone(),
+                mutable: *mutable,
+                inner: Box::new(self.resolve_type(inner)),
+            },
             TypeKind::Array(inner) => ResolvedType::Array(Box::new(self.resolve_type(inner))),
             TypeKind::Tuple(items) if items.is_empty() => ResolvedType::Unit,
             TypeKind::Tuple(items) => {
@@ -662,6 +679,7 @@ impl<'a> Analyzer<'a> {
         expected: Option<&ResolvedType>,
     ) -> ResolvedType {
         match &expression.kind {
+            ExprKind::Borrow { mutable, operand } => self.infer_borrow(*mutable, operand, scope),
             ExprKind::Await(operand) => {
                 if !self.async_context {
                     self.push_error(
@@ -745,6 +763,29 @@ impl<'a> Analyzer<'a> {
                     expected.unwrap_or(&ResolvedType::Unknown),
                 )
             }
+        }
+    }
+
+    fn infer_borrow(
+        &mut self,
+        mutable: bool,
+        operand: &Expr,
+        scope: &mut HashMap<String, ResolvedType>,
+    ) -> ResolvedType {
+        if !matches!(
+            operand.kind,
+            ExprKind::Path(_) | ExprKind::Field { .. } | ExprKind::Literal(Literal::Identifier(_))
+        ) {
+            self.push_error(
+                "SYL2601",
+                "borrow operand must be a named place",
+                operand.span,
+            );
+        }
+        ResolvedType::Reference {
+            region: None,
+            mutable,
+            inner: Box::new(self.infer_expr(operand, scope, None)),
         }
     }
 
@@ -1212,6 +1253,18 @@ fn compatible(expected: &ResolvedType, actual: &ResolvedType) -> bool {
         | (ResolvedType::Primitive(PrimitiveType::Float(_)), ResolvedType::FloatLiteral) => true,
         (ResolvedType::Array(left), ResolvedType::Array(right))
         | (ResolvedType::Option(left), ResolvedType::Option(right)) => compatible(left, right),
+        (
+            ResolvedType::Reference {
+                mutable: left_mutable,
+                inner: left,
+                ..
+            },
+            ResolvedType::Reference {
+                mutable: right_mutable,
+                inner: right,
+                ..
+            },
+        ) => left_mutable == right_mutable && compatible(left, right),
         (
             ResolvedType::Result(left_ok, left_error),
             ResolvedType::Result(right_ok, right_error),

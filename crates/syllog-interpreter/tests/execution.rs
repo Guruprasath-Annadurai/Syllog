@@ -70,3 +70,17 @@ fn instruction_budget_is_a_hard_deterministic_limit() {
 
     assert_eq!(error, RuntimeError::InstructionLimitExceeded { limit: 1 });
 }
+
+#[test]
+fn instrumented_execution_observes_exactly_once_owned_drops() {
+    let (program, entry) = compile(
+        r#"
+        fn consume(value: String) -> U64 { 42 }
+        fn main() -> U64 { consume("owned") }
+        "#,
+    );
+
+    let result = execute(&program, entry, InterpreterLimits::default()).unwrap();
+    assert_eq!(result.value, RuntimeValue::U64(42));
+    assert_eq!(result.drops_executed, 1);
+}

@@ -1,8 +1,11 @@
 //! Differential Wasm backend contracts.
 
-use syllog_codegen_wasm::{WasmOptions, emit, emit_with_async_frames};
+use std::collections::BTreeSet;
+
+use syllog_codegen_wasm::{WasmOptions, emit, emit_with_async_frames, emit_with_capabilities};
 use syllog_compiler::{lower_async_state_machines, lower_to_hir, lower_to_mir};
 use syllog_interpreter::{InterpreterLimits, RuntimeValue, execute};
+use syllog_ir::{CapabilityManifest, Effect};
 use syllog_parser::parse_syl;
 use syllog_runtime::Sandbox;
 use syllog_semantic::analyze;
@@ -107,4 +110,27 @@ fn wasm_exports_verified_resumable_async_frame_transitions() {
     assert_eq!(step.call(&mut store, (1, 1)).unwrap(), 2);
     assert_eq!(step.call(&mut store, (2, 0)).unwrap(), 3);
     assert_eq!(step.call(&mut store, (1, 2)).unwrap(), 4);
+}
+
+#[test]
+fn artifact_hash_and_metadata_commit_to_capability_manifest() {
+    let program = mir("fn main() -> U64 { 42 }");
+    let manifest = CapabilityManifest {
+        format_version: 1,
+        required: BTreeSet::from([Effect::Network, Effect::Provider]),
+    };
+    let artifact = emit_with_capabilities(&program, &[], &manifest, &WasmOptions::default())
+        .expect("capability-bearing artifact should emit");
+    let pure = emit(&program, &WasmOptions::default()).unwrap();
+
+    assert_eq!(artifact.metadata.capabilities, manifest);
+    assert_ne!(artifact.metadata.source_hash, pure.metadata.source_hash);
+    assert!(
+        wasmparser::Parser::new(0)
+            .parse_all(&artifact.bytes)
+            .any(|payload| {
+                matches!(payload.unwrap(), wasmparser::Payload::CustomSection(section)
+            if section.name() == "syllog.capabilities")
+            })
+    );
 }

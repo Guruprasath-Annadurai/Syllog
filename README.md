@@ -111,7 +111,8 @@ expressions, blocks, local bindings, returns, and `match`. See
 
 `syllog check` is the front-end compilation command. It parses the complete
 file, validates domain declarations, resolves type and value names, and then
-type-checks expressions, functions, agent/pipeline contracts, and supported
+type-checks expressions, ownership/regions, effect bounds, functions,
+agent/pipeline contracts, and supported
 closed matches. It emits contextual terminal diagnostics by default. Pass
 `--json` (or `--diagnostic-format=json`) for a versioned editor report on stdout;
 compile errors still produce a failing process status. See
@@ -129,6 +130,12 @@ and fresh-store Wasmtime execution with fuel, per-memory, and deny-by-default
 host capability enforcement. Its supported ABI and deliberately deferred
 `evo`/`asi_loop` work are documented in
 [the runtime foundations reference](docs/runtime-foundations.md).
+
+Phase 8 adds affine moves, shared/mutable borrow diagnostics, deterministic MIR
+drop insertion, effect inference, artifact capability manifests, and matching
+Wasmtime enforcement. Its [implementation ledger](docs/status/phase-8.md)
+records the remaining work; Syllog does not yet claim Rust-level memory safety
+or enterprise production readiness.
 
 See [the Language Reference Manual](docs/language-reference.md) for the v1 type,
 ownership, native, agent, probe, safety, Wasm evolution, and `asi_loop` design.

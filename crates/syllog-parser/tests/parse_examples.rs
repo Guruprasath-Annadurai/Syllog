@@ -204,3 +204,48 @@ fn keyword_prefixes_remain_identifiers() {
     assert_eq!(function.name, "agentCount");
     assert_eq!(function.parameters[0].name, "structure");
 }
+
+#[test]
+fn parses_spanned_references_borrows_lifetimes_and_effect_bounds() {
+    let source = "pub fn send(value: &'request mut String) -> &String !{network, provider} { let shared = &value; &mut value }";
+    let ast = parse_syl(source).expect("ownership and effect syntax must parse");
+    let Item::Function(function) = &ast.items[0] else {
+        panic!("expected a function")
+    };
+    let TypeKind::Reference {
+        lifetime, mutable, ..
+    } = &function.parameters[0].ty.kind
+    else {
+        panic!("expected a reference parameter")
+    };
+    assert_eq!(lifetime.as_deref(), Some("request"));
+    assert!(*mutable);
+    assert_eq!(
+        function
+            .effects
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|effect| effect.name.as_str())
+            .collect::<Vec<_>>(),
+        ["network", "provider"]
+    );
+    assert!(
+        function
+            .effects
+            .as_ref()
+            .unwrap()
+            .iter()
+            .all(|effect| effect.span.end > effect.span.start)
+    );
+    assert!(matches!(
+        function.body.statements[0].kind,
+        StatementKind::Let {
+            value: syllog_parser::Expr {
+                kind: ExprKind::Borrow { mutable: false, .. },
+                ..
+            },
+            ..
+        }
+    ));
+}

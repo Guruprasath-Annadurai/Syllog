@@ -95,6 +95,18 @@ fn function_signature(node: &FunctionNode) -> String {
 
 fn type_text(node: &TypeNode) -> String {
     match &node.kind {
+        TypeKind::Reference {
+            lifetime,
+            mutable,
+            inner,
+        } => format!(
+            "&{}{}{}",
+            lifetime
+                .as_ref()
+                .map_or_else(String::new, |name| format!("'{name} ")),
+            if *mutable { "mut " } else { "" },
+            type_text(inner)
+        ),
         TypeKind::Path {
             segments,
             arguments,

@@ -160,11 +160,12 @@ Traits may declare associated types and constants. Coherence permits an impl
 only when either the trait or self type is local. Specialization is absent.
 Const generics are restricted to total, compile-time evaluable expressions.
 
-Effects form an inferred set written `!{io, net, ai, time, random, unsafe}`.
+Effects form an inferred set written
+`!{alloc, async, io, network, provider}`. `!{pure}` denotes the empty set and
+cannot be combined with another effect.
 Callers must possess every callee effect. Pure functions have the empty set.
-Deterministic contexts reject `time`, `random`, unordered iteration, ambient
-I/O, and nondeterministic accelerator kernels unless supplied through a seeded,
-recordable capability.
+Deterministic contexts reject ambient I/O, network, and provider access unless
+the artifact manifest and runtime policy both admit the capability.
 
 ## 6. Ownership, borrowing, and memory
 
@@ -183,7 +184,9 @@ Self-referential movable values require pinning.
 `Send` permits ownership transfer across workers; `Sync` permits shared access.
 Compiler-derived implementations require every field to satisfy the trait.
 Interior mutation is available only through synchronized or single-worker cell
-types. Data races are impossible in safe Syllog.
+types. Data-race freedom is a normative language goal, not a current
+implementation claim. The safe-subset boundary and remaining proof obligations
+are tracked in [`status/phase-8.md`](status/phase-8.md).
 
 "Zero allocation" means no *implicit* heap allocation: stack values, borrowed
 slices, arenas, fixed-capacity collections, and caller-provided buffers are

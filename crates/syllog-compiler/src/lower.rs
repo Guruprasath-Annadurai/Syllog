@@ -238,6 +238,8 @@ impl<'a> Lowerer<'a> {
                     HirDefinitionKind::Function(HirFunction {
                         is_test: has_attribute(node, "test"),
                         asynchronous: node.asynchronous,
+                        public: node.public,
+                        declared_effects: lower_effects(node.effects.as_deref()),
                         parameters,
                         result,
                         body,
@@ -363,6 +365,10 @@ impl<'a> Lowerer<'a> {
             .cloned()
             .unwrap_or_else(|| Self::fallback_expression_type(expression, scope));
         let kind = match &expression.kind {
+            ExprKind::Borrow { mutable, operand } => HirExprKind::Borrow {
+                mutable: *mutable,
+                operand: Box::new(self.lower_expression(operand, scope)),
+            },
             ExprKind::Await(operand) => {
                 HirExprKind::Await(Box::new(self.lower_expression(operand, scope)))
             }
@@ -476,6 +482,15 @@ impl<'a> Lowerer<'a> {
 
     fn lower_type(&self, node: &TypeNode) -> ResolvedType {
         match &node.kind {
+            TypeKind::Reference {
+                lifetime,
+                mutable,
+                inner,
+            } => ResolvedType::Reference {
+                region: lifetime.clone(),
+                mutable: *mutable,
+                inner: Box::new(self.lower_type(inner)),
+            },
             TypeKind::Array(inner) => ResolvedType::Array(Box::new(self.lower_type(inner))),
             TypeKind::Tuple(items) if items.is_empty() => ResolvedType::Unit,
             TypeKind::Tuple(items) => {
@@ -519,6 +534,11 @@ impl<'a> Lowerer<'a> {
         scope: &BTreeMap<String, DefId>,
     ) -> ResolvedType {
         match &expression.kind {
+            ExprKind::Borrow { mutable, operand } => ResolvedType::Reference {
+                region: None,
+                mutable: *mutable,
+                inner: Box::new(Self::fallback_expression_type(operand, scope)),
+            },
             ExprKind::Await(operand) => Self::fallback_expression_type(operand, scope),
             ExprKind::Literal(Literal::Identifier(name)) if scope.contains_key(name) => {
                 ResolvedType::Unknown
@@ -568,6 +588,10 @@ impl<'a> Lowerer<'a> {
         self.next_definition += 1;
         id
     }
+}
+
+fn lower_effects(effects: Option<&[syllog_parser::EffectNode]>) -> Option<Vec<String>> {
+    effects.map(|effects| effects.iter().map(|effect| effect.name.clone()).collect())
 }
 
 fn has_attribute(function: &syllog_parser::FunctionNode, name: &str) -> bool {

@@ -11,7 +11,7 @@ It uses separate type and value namespaces and performs three ordered passes:
    validate pipeline contracts, and prove supported matches exhaustive.
 
 The public `SymbolTable` exposes built-in and declared type/value symbols.
-`ResolvedType` represents primitives, structs, enums, state types, arrays,
+`ResolvedType` represents primitives, structs, enums, state types, references, arrays,
 tuples, functions, `Option<T>`, and `Result<T,E>`. An error sentinel suppresses
 cascading diagnostics after an unresolved type or name.
 
@@ -26,6 +26,13 @@ cascading diagnostics after an unresolved type or name.
 | `SYL2101` | Expression, argument, return, initializer, or pattern type mismatch. |
 | `SYL2201` | Pipeline input/output incompatible with its selected agent contract. |
 | `SYL2301` | Non-exhaustive closed match. |
+| `SYL2602` | Use or borrow after an affine move. |
+| `SYL2603` | Overlapping shared/mutable borrow conflict. |
+| `SYL2604` | Reference escapes its region or has no valid input lifetime. |
+| `SYL2605` | Move attempted while a value is borrowed. |
+| `SYL2606` | Borrow crosses an async suspension point. |
+| `SYL2701` | Unknown, duplicate, or contradictory effect declaration. |
+| `SYL2702` | Explicit effect bound omits an inferred effect. |
 
 ## Algebraic types and match coverage
 
@@ -47,8 +54,11 @@ to compare.
 ## Current boundary
 
 This milestone does not implement user-defined generics, traits, overloads,
-method lookup, implicit conversions, borrow checking, effects, record literals,
-or cross-file modules. Exhaustiveness does not yet diagnose unreachable arms or
+method lookup, implicit conversions, record literals, field-sensitive move
+paths, general lifetime constraint solving, or mutation through references.
+Cross-file modules are linked package-wide. Affine ownership and effects are
+implemented for the documented safe subset; their exact limits are tracked in
+[`status/phase-8.md`](status/phase-8.md). Exhaustiveness does not yet diagnose unreachable arms or
 decompose nested patterns into a full pattern matrix. Integer literals are
 compatible with explicit integer targets, but conversions between concrete
 numeric types remain forbidden.

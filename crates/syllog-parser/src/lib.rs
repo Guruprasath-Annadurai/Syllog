@@ -235,6 +235,11 @@ fn parse_function(pair: Pair<'_, Rule>) -> anyhow::Result<FunctionNode> {
     } else {
         None
     };
+    let effects = if matches!(parts.front().map(Pair::as_rule), Some(Rule::effect_set)) {
+        Some(parse_effect_set(parts.pop_front().expect("front checked"))?)
+    } else {
+        None
+    };
     let body = parse_block(pop_front(&mut parts, "function body")?)?;
     Ok(FunctionNode {
         attributes,
@@ -243,9 +248,25 @@ fn parse_function(pair: Pair<'_, Rule>) -> anyhow::Result<FunctionNode> {
         name,
         parameters,
         return_type,
+        effects,
         body,
         span,
     })
+}
+
+fn parse_effect_set(pair: Pair<'_, Rule>) -> anyhow::Result<Vec<EffectNode>> {
+    pair.into_inner()
+        .map(|effect| {
+            let span = pair_span(&effect);
+            let name = effect
+                .into_inner()
+                .next()
+                .context("effect name is empty")?
+                .as_str()
+                .to_owned();
+            Ok(EffectNode { name, span })
+        })
+        .collect()
 }
 
 fn parse_state(pair: Pair<'_, Rule>) -> anyhow::Result<StateNode> {
@@ -392,6 +413,28 @@ fn parse_type(pair: Pair<'_, Rule>) -> anyhow::Result<TypeNode> {
     };
     let span = pair_span(&pair);
     let kind = match pair.as_rule() {
+        Rule::reference_type => {
+            let mut parts = meaningful_inner(pair);
+            let lifetime = if matches!(parts.front().map(Pair::as_rule), Some(Rule::lifetime)) {
+                Some(
+                    parts
+                        .pop_front()
+                        .expect("front checked")
+                        .as_str()
+                        .trim_start_matches('\'')
+                        .to_owned(),
+                )
+            } else {
+                None
+            };
+            let mutable = take_marker(&mut parts, Rule::kw_mut);
+            let inner = parse_type(pop_front(&mut parts, "referenced type")?)?;
+            TypeKind::Reference {
+                lifetime,
+                mutable,
+                inner: Box::new(inner),
+            }
+        }
         Rule::array_type => {
             let inner = pair.into_inner().next().context("array type is empty")?;
             TypeKind::Array(Box::new(parse_type(inner)?))
@@ -559,6 +602,15 @@ fn parse_postfix(pair: Pair<'_, Rule>) -> anyhow::Result<Expr> {
 fn parse_primary(pair: Pair<'_, Rule>) -> anyhow::Result<Expr> {
     let span = pair_span(&pair);
     let kind = match pair.as_rule() {
+        Rule::borrow_expression => {
+            let mut parts = meaningful_inner(pair);
+            let mutable = take_marker(&mut parts, Rule::kw_mut);
+            let operand = parse_expression(pop_front(&mut parts, "borrow operand")?)?;
+            ExprKind::Borrow {
+                mutable,
+                operand: Box::new(operand),
+            }
+        }
         Rule::await_expression => {
             let operand = pair
                 .into_inner()

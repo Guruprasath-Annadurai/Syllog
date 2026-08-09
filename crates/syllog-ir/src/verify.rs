@@ -12,6 +12,42 @@ use crate::{
 /// One MIR invariant violation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum VerificationError {
+    /// An affine local was consumed or dropped more than once.
+    UseAfterMove {
+        /// Invalid function.
+        function: DefId,
+        /// Referencing block.
+        block: BlockId,
+        /// Unavailable local.
+        local: LocalId,
+    },
+    /// A deterministic drop targeted storage that no longer owned a value.
+    DoubleDrop {
+        /// Invalid function.
+        function: DefId,
+        /// Referencing block.
+        block: BlockId,
+        /// Already-consumed local.
+        local: LocalId,
+    },
+    /// A non-`Copy` local used a non-consuming operand.
+    InvalidCopy {
+        /// Invalid function.
+        function: DefId,
+        /// Referencing block.
+        block: BlockId,
+        /// Affine local.
+        local: LocalId,
+    },
+    /// An owned value was overwritten without first being moved or dropped.
+    OverwriteWithoutDrop {
+        /// Invalid function.
+        function: DefId,
+        /// Referencing block.
+        block: BlockId,
+        /// Still-owned destination local.
+        local: LocalId,
+    },
     /// Function has no return local or no entry block.
     EmptyFunction {
         /// Invalid function.
@@ -108,12 +144,340 @@ pub fn verify(program: &MirProgram) -> Result<(), Vec<VerificationError>> {
     let mut errors = Vec::new();
     for function in &program.functions {
         verify_function(function, &signatures, &mut errors);
+        verify_affine_ownership(function, &mut errors);
     }
     if errors.is_empty() {
         Ok(())
     } else {
         Err(errors)
     }
+}
+
+fn verify_affine_ownership(function: &MirFunction, errors: &mut Vec<VerificationError>) {
+    if function.blocks.is_empty() {
+        return;
+    }
+    let reachable = reachable_blocks(function);
+    let universe = (0..function.locals.len())
+        .filter_map(|index| u32::try_from(index).ok().map(LocalId))
+        .collect::<BTreeSet<_>>();
+    let parameters = (1..=function.parameter_count)
+        .map(LocalId)
+        .collect::<BTreeSet<_>>();
+    let initialized = ever_initialized(function, &parameters);
+    let mut incoming = reachable
+        .iter()
+        .map(|reachable| reachable.then(|| universe.clone()))
+        .collect::<Vec<_>>();
+    incoming[0] = Some(parameters);
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for (index, block) in function.blocks.iter().enumerate() {
+            let Some(mut state) = incoming[index].clone() else {
+                continue;
+            };
+            transfer_block(block, &mut state);
+            if let Some(terminator) = &block.terminator {
+                for successor in successors(terminator) {
+                    let Ok(successor) = usize::try_from(successor.0) else {
+                        continue;
+                    };
+                    if successor >= incoming.len() || !reachable[successor] {
+                        continue;
+                    }
+                    let merged = incoming[successor]
+                        .as_ref()
+                        .map(|current| current.intersection(&state).copied().collect());
+                    if merged != incoming[successor] {
+                        incoming[successor] = merged;
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+    for (index, block) in function.blocks.iter().enumerate() {
+        let Some(mut state) = incoming[index].clone() else {
+            continue;
+        };
+        let block_id = BlockId(u32::try_from(index).unwrap_or(u32::MAX));
+        for statement in &block.statements {
+            match statement {
+                Statement::Assign { destination, value } => {
+                    check_rvalue_ownership(
+                        function,
+                        block_id,
+                        value,
+                        &mut state,
+                        &initialized,
+                        errors,
+                    );
+                    if let Place::Local(local) = destination {
+                        if state.contains(local)
+                            && function
+                                .locals
+                                .get(usize::try_from(local.0).unwrap_or(usize::MAX))
+                                .is_some_and(|ty| !mir_type_is_copy(ty))
+                        {
+                            errors.push(VerificationError::OverwriteWithoutDrop {
+                                function: function.id,
+                                block: block_id,
+                                local: *local,
+                            });
+                        }
+                        state.insert(*local);
+                    }
+                }
+                Statement::Drop(place) => {
+                    let local = place_local(place);
+                    if !state.remove(&local) && initialized.contains(&local) {
+                        errors.push(VerificationError::DoubleDrop {
+                            function: function.id,
+                            block: block_id,
+                            local,
+                        });
+                    }
+                }
+            }
+        }
+        if let Some(terminator) = &block.terminator {
+            check_terminator_ownership(
+                function,
+                block_id,
+                terminator,
+                &mut state,
+                &initialized,
+                errors,
+            );
+        }
+    }
+}
+
+fn reachable_blocks(function: &MirFunction) -> Vec<bool> {
+    let mut reachable = vec![false; function.blocks.len()];
+    let mut queue = VecDeque::from([BlockId(0)]);
+    while let Some(block) = queue.pop_front() {
+        let Ok(index) = usize::try_from(block.0) else {
+            continue;
+        };
+        if index >= reachable.len() || reachable[index] {
+            continue;
+        }
+        reachable[index] = true;
+        if let Some(terminator) = &function.blocks[index].terminator {
+            queue.extend(successors(terminator));
+        }
+    }
+    reachable
+}
+
+fn ever_initialized(function: &MirFunction, parameters: &BTreeSet<LocalId>) -> BTreeSet<LocalId> {
+    let mut initialized = parameters.clone();
+    for block in &function.blocks {
+        for statement in &block.statements {
+            if let Statement::Assign {
+                destination: Place::Local(local),
+                ..
+            } = statement
+            {
+                initialized.insert(*local);
+            }
+        }
+        if let Some(Terminator::Call {
+            destination: Place::Local(local),
+            ..
+        }) = &block.terminator
+        {
+            initialized.insert(*local);
+        }
+    }
+    initialized
+}
+
+fn transfer_block(block: &BasicBlock, state: &mut BTreeSet<LocalId>) {
+    for statement in &block.statements {
+        match statement {
+            Statement::Assign { destination, value } => {
+                consume_rvalue(value, state);
+                if let Place::Local(local) = destination {
+                    state.insert(*local);
+                }
+            }
+            Statement::Drop(place) => {
+                state.remove(&place_local(place));
+            }
+        }
+    }
+    if let Some(terminator) = &block.terminator {
+        consume_terminator(terminator, state);
+    }
+}
+
+fn consume_rvalue(value: &Rvalue, state: &mut BTreeSet<LocalId>) {
+    match value {
+        Rvalue::Borrow { .. } => {}
+        Rvalue::Use(operand) | Rvalue::Discriminant(operand) => consume_operand(operand, state),
+        Rvalue::Aggregate { fields, .. } => {
+            for field in fields {
+                consume_operand(field, state);
+            }
+        }
+        Rvalue::Binary { left, right, .. } => {
+            consume_operand(left, state);
+            consume_operand(right, state);
+        }
+    }
+}
+
+fn consume_terminator(terminator: &Terminator, state: &mut BTreeSet<LocalId>) {
+    match terminator {
+        Terminator::SwitchInt { value, .. } => consume_operand(value, state),
+        Terminator::Call {
+            args, destination, ..
+        } => {
+            for argument in args {
+                consume_operand(argument, state);
+            }
+            if let Place::Local(local) = destination {
+                state.insert(*local);
+            }
+        }
+        Terminator::Return | Terminator::Goto(_) => {}
+    }
+}
+
+fn consume_operand(operand: &Operand, state: &mut BTreeSet<LocalId>) {
+    if let Operand::Move(local) = operand {
+        state.remove(local);
+    }
+}
+
+fn check_rvalue_ownership(
+    function: &MirFunction,
+    block: BlockId,
+    value: &Rvalue,
+    state: &mut BTreeSet<LocalId>,
+    initialized: &BTreeSet<LocalId>,
+    errors: &mut Vec<VerificationError>,
+) {
+    match value {
+        Rvalue::Borrow { place, .. } => check_read(
+            function,
+            block,
+            place_local(place),
+            false,
+            state,
+            initialized,
+            errors,
+        ),
+        Rvalue::Use(operand) | Rvalue::Discriminant(operand) => {
+            check_operand_ownership(function, block, operand, state, initialized, errors);
+        }
+        Rvalue::Aggregate { fields, .. } => {
+            for field in fields {
+                check_operand_ownership(function, block, field, state, initialized, errors);
+            }
+        }
+        Rvalue::Binary { left, right, .. } => {
+            check_operand_ownership(function, block, left, state, initialized, errors);
+            check_operand_ownership(function, block, right, state, initialized, errors);
+        }
+    }
+}
+
+fn check_terminator_ownership(
+    function: &MirFunction,
+    block: BlockId,
+    terminator: &Terminator,
+    state: &mut BTreeSet<LocalId>,
+    initialized: &BTreeSet<LocalId>,
+    errors: &mut Vec<VerificationError>,
+) {
+    match terminator {
+        Terminator::Return => check_read(
+            function,
+            block,
+            LocalId(0),
+            false,
+            state,
+            initialized,
+            errors,
+        ),
+        Terminator::SwitchInt { value, .. } => {
+            check_operand_ownership(function, block, value, state, initialized, errors);
+        }
+        Terminator::Call {
+            args, destination, ..
+        } => {
+            for argument in args {
+                check_operand_ownership(function, block, argument, state, initialized, errors);
+            }
+            if let Place::Local(local) = destination {
+                state.insert(*local);
+            }
+        }
+        Terminator::Goto(_) => {}
+    }
+}
+
+fn check_operand_ownership(
+    function: &MirFunction,
+    block: BlockId,
+    operand: &Operand,
+    state: &mut BTreeSet<LocalId>,
+    initialized: &BTreeSet<LocalId>,
+    errors: &mut Vec<VerificationError>,
+) {
+    match operand {
+        Operand::Constant(_) => {}
+        Operand::Copy(local) => {
+            check_read(function, block, *local, false, state, initialized, errors);
+            if function
+                .locals
+                .get(usize::try_from(local.0).unwrap_or(usize::MAX))
+                .is_some_and(|ty| !mir_type_is_copy(ty))
+            {
+                errors.push(VerificationError::InvalidCopy {
+                    function: function.id,
+                    block,
+                    local: *local,
+                });
+            }
+        }
+        Operand::Move(local) => {
+            check_read(function, block, *local, true, state, initialized, errors);
+        }
+    }
+}
+
+fn check_read(
+    function: &MirFunction,
+    block: BlockId,
+    local: LocalId,
+    consume: bool,
+    state: &mut BTreeSet<LocalId>,
+    initialized: &BTreeSet<LocalId>,
+    errors: &mut Vec<VerificationError>,
+) {
+    if !state.contains(&local) && initialized.contains(&local) {
+        errors.push(VerificationError::UseAfterMove {
+            function: function.id,
+            block,
+            local,
+        });
+        return;
+    }
+    if consume {
+        state.remove(&local);
+    }
+}
+
+fn mir_type_is_copy(ty: &MirType) -> bool {
+    matches!(
+        ty,
+        MirType::Unit | MirType::Bool | MirType::I64 | MirType::U64
+    ) || matches!(ty, MirType::Reference { mutable: false, .. })
 }
 
 fn verify_function(
@@ -370,6 +734,13 @@ fn verify_rvalue(
     errors: &mut Vec<VerificationError>,
 ) -> Option<MirType> {
     match value {
+        Rvalue::Borrow { mutable, place } => {
+            verify_local_use(function, block, place_local(place), defined, errors);
+            place_type(function, block, place, errors).map(|inner| MirType::Reference {
+                mutable: *mutable,
+                inner: Box::new(inner),
+            })
+        }
         Rvalue::Use(operand) => operand_type(function, block, operand, defined, errors),
         Rvalue::Discriminant(operand) => {
             operand_type(function, block, operand, defined, errors);

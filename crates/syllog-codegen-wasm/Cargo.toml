@@ -23,6 +23,7 @@ syllog-parser = { path = "../syllog-parser", version = "0.1.0" }
 syllog-runtime = { path = "../syllog-runtime", version = "0.1.0" }
 syllog-semantic = { path = "../syllog-semantic", version = "0.1.0" }
 wasmtime.workspace = true
+wasmparser.workspace = true
 
 [lints]
 workspace = true

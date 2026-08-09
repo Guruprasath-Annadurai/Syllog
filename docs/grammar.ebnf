@@ -1,41 +1,57 @@
-(* Syllog grammar — v0.1 subset (lexer + parser scope only) *)
+(* Syllog implemented grammar — v0.1 parser subset *)
 
-program        = { item } ;
-item           = function_decl | let_decl ;
+program          = [ module-decl ] , { use-decl } , { item } ;
+item             = [ "pub" ] , ( struct-decl | enum-decl | state-decl
+                 | function-decl | agent-decl | pipeline-decl
+                 | safety-bound-decl ) ;
+module-decl      = "module" , path ;
+use-decl         = "use" , path , [ "as" , identifier ] ;
 
-function_decl  = "fn" , identifier , "(" , [ param_list ] , ")" ,
-                 [ "->" , type ] , block ;
-param_list     = param , { "," , param } ;
-param          = identifier , ":" , type ;
+struct-decl      = "struct" , identifier , "{" , { typed-field } , "}" ;
+enum-decl        = "enum" , identifier , "{" , { enum-variant } , "}" ;
+enum-variant     = identifier , [ "(" , [ type , { "," , type } ] , ")" ] ;
+state-decl       = "state" , identifier , "{" , { typed-field } , "}" ;
+typed-field      = identifier , ":" , type ;
 
-let_decl       = "let" , identifier , [ ":" , type ] , "=" , expression ;
+function-decl    = [ "async" ] , "fn" , identifier , "(" , [ parameters ] , ")"
+                 , [ "->" , type ] , [ effect-set ] , block ;
+parameters       = parameter , { "," , parameter } ;
+parameter        = identifier , ":" , type ;
+effect-set       = "!" , "{" , [ effect , { "," , effect } ] , "}" ;
+effect           = "pure" | "alloc" | "async" | "io" | "network" | "provider" ;
 
-type           = identifier ;
+agent-decl       = "agent" , identifier , [ signature ] , property-block ;
+pipeline-decl    = "pipeline" , identifier , [ signature ] , property-block ;
+safety-bound-decl = "safety_bound" , identifier , property-block ;
+signature        = "(" , [ parameters ] , ")" , [ "->" , type ] ;
+property-block   = "{" , { identifier , [ ":" , type ] , ":" , expression } , "}" ;
 
-block          = "{" , { statement } , "}" ;
-statement      = let_decl
-               | expr_statement
-               | return_statement
-               | if_statement
-               | block ;
+type             = reference-type | array-type | tuple-type | path-type ;
+reference-type   = "&" , [ lifetime ] , [ "mut" ] , type ;
+lifetime         = "'" , identifier ;
+array-type       = "[" , type , "]" ;
+tuple-type       = "(" , [ type , { "," , type } ] , ")" ;
+path-type        = path , [ "<" , type , { "," , type } , ">" ] ;
 
-expr_statement    = expression ;
-return_statement  = "return" , [ expression ] ;
-if_statement      = "if" , expression , block , [ "else" , ( block | if_statement ) ] ;
+block            = "{" , { statement } , "}" ;
+statement        = "let" , identifier , [ ":" , type ] , "=" , expression
+                 | "return" , [ expression ]
+                 | expression ;
+expression       = match-expression | binary-expression ;
+match-expression = "match" , expression , "{" , { pattern , [ "if" , expression ]
+                 , "=>" , expression , [ "," ] } , "}" ;
+binary-expression = unary-expression , { binary-operator , unary-expression } ;
+unary-expression = [ "!" | "-" | "await" | "&" , [ "mut" ] ] , postfix-expression ;
+postfix-expression = primary-expression , { call-suffix | field-suffix } ;
+call-suffix      = "(" , [ call-argument , { "," , call-argument } ] , ")" ;
+call-argument    = [ identifier , ":" ] , expression ;
+field-suffix     = "." , identifier ;
+primary-expression = literal | path | array | block | "(" , expression , ")" ;
+array            = "[" , [ expression , { "," , expression } ] , "]" ;
+pattern          = "_" | literal | path , [ "(" , [ pattern , { "," , pattern } ] , ")" ] ;
 
-expression     = equality ;
-equality       = comparison , { ( "==" | "!=" ) , comparison } ;
-comparison     = term , { ( "<" | "<=" | ">" | ">=" ) , term } ;
-term           = factor , { ( "+" | "-" ) , factor } ;
-factor         = unary , { ( "*" | "/" | "%" ) , unary } ;
-unary          = [ "!" | "-" ] , call ;
-call           = primary , { "(" , [ arg_list ] , ")" } ;
-arg_list       = expression , { "," , expression } ;
-primary        = number | string | "true" | "false" | identifier
-               | "(" , expression , ")" ;
-
-number         = digit , { digit } , [ "." , digit , { digit } ] ;
-string         = '"' , { character } , '"' ;
-identifier     = ( letter | "_" ) , { letter | digit | "_" } ;
-letter         = "a".."z" | "A".."Z" ;
-digit          = "0".."9" ;
+path             = identifier , { "::" , identifier } ;
+literal          = string | number | "true" | "false" | identifier ;
+identifier       = ( letter | "_" ) , { letter | digit | "_" } ;
+letter           = "a".."z" | "A".."Z" ;
+digit            = "0".."9" ;

@@ -5,6 +5,68 @@ mod verify;
 pub use verify::{VerificationError, verify};
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
+
+/// A statically inferred operation class that must be admitted at runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Effect {
+    /// Creates dynamically managed storage.
+    Alloc,
+    /// Suspends and resumes through the structured task runtime.
+    Async,
+    /// Accesses host input/output facilities.
+    Io,
+    /// Performs network communication.
+    Network,
+    /// Invokes a model-provider adapter.
+    Provider,
+}
+
+impl Effect {
+    /// Parses a normative source spelling. `pure` is represented by an empty set.
+    #[must_use]
+    pub fn from_source(name: &str) -> Option<Self> {
+        match name {
+            "alloc" => Some(Self::Alloc),
+            "async" => Some(Self::Async),
+            "io" => Some(Self::Io),
+            "network" => Some(Self::Network),
+            "provider" => Some(Self::Provider),
+            _ => None,
+        }
+    }
+
+    /// Stable source and artifact spelling.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Alloc => "alloc",
+            Self::Async => "async",
+            Self::Io => "io",
+            Self::Network => "network",
+            Self::Provider => "provider",
+        }
+    }
+}
+
+/// Versioned compile-time capability requirements embedded in every artifact.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CapabilityManifest {
+    /// Manifest schema version.
+    pub format_version: u32,
+    /// Closed, deterministic set of required effects.
+    pub required: BTreeSet<Effect>,
+}
+
+impl Default for CapabilityManifest {
+    fn default() -> Self {
+        Self {
+            format_version: 1,
+            required: BTreeSet::new(),
+        }
+    }
+}
 
 /// Module component of a stable definition identity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -162,6 +224,13 @@ pub fn verify_async_machine(
 /// Runtime-representable MIR types in the first executable subset.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MirType {
+    /// Statically verified reference. Backends may erase its region metadata.
+    Reference {
+        /// Whether the reference grants exclusive mutation.
+        mutable: bool,
+        /// Referenced runtime type.
+        inner: Box<MirType>,
+    },
     /// No value.
     Unit,
     /// Boolean value.
@@ -254,6 +323,13 @@ pub enum BinaryOp {
 /// Computation assigned to a place.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Rvalue {
+    /// Creates a statically checked reference to a place.
+    Borrow {
+        /// Whether the borrow is exclusive.
+        mutable: bool,
+        /// Borrowed place.
+        place: Place,
+    },
     /// Direct operand use.
     Use(Operand),
     /// Primitive binary operation.

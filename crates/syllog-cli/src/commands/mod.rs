@@ -18,8 +18,8 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use semver::VersionReq;
 use syllog_compiler::{
-    PackageSource, compile, compile_package, lower_async_state_machines, lower_to_hir,
-    lower_to_mir, render_human,
+    PackageSource, analyze_effects, compile, compile_package, lower_async_state_machines,
+    lower_to_hir, lower_to_mir, render_human,
 };
 use syllog_package::{ContentAddressedCache, LockedPackage, Resolution, read_lockfile};
 use syllog_project::TargetKind;
@@ -28,6 +28,7 @@ use syllog_registry_client::PackageArchive;
 pub(crate) struct CompiledProgram {
     pub(crate) mir: syllog_ir::MirProgram,
     pub(crate) async_frames: Vec<syllog_ir::AsyncStateMachine>,
+    pub(crate) capabilities: syllog_ir::CapabilityManifest,
 }
 
 pub(crate) fn compile_program(path: &Path) -> anyhow::Result<Option<CompiledProgram>> {
@@ -55,11 +56,18 @@ pub(crate) fn compile_program(path: &Path) -> anyhow::Result<Option<CompiledProg
         .expect("successful compilation has symbols");
     let hir = lower_to_hir(ast, symbols)
         .map_err(|diagnostics| anyhow::anyhow!("HIR lowering failed: {diagnostics:#?}"))?;
+    let capabilities = analyze_effects(&hir)
+        .map_err(|errors| anyhow::anyhow!("effect analysis failed: {errors:#?}"))?
+        .manifest;
     let async_frames = lower_async_state_machines(&hir)
         .map_err(|error| anyhow::anyhow!("async lowering failed: {error}"))?;
     let mir = lower_to_mir(&hir)
         .map_err(|diagnostics| anyhow::anyhow!("MIR lowering failed: {diagnostics:#?}"))?;
-    Ok(Some(CompiledProgram { mir, async_frames }))
+    Ok(Some(CompiledProgram {
+        mir,
+        async_frames,
+        capabilities,
+    }))
 }
 
 fn compile_package_program(
@@ -97,11 +105,18 @@ fn compile_package_program(
         return Ok(None);
     }
     let hir = compilation.hir.expect("successful package has linked HIR");
+    let capabilities = analyze_effects(&hir)
+        .map_err(|errors| anyhow::anyhow!("effect analysis failed: {errors:#?}"))?
+        .manifest;
     let async_frames = lower_async_state_machines(&hir)
         .map_err(|error| anyhow::anyhow!("async lowering failed: {error}"))?;
     let mir = lower_to_mir(&hir)
         .map_err(|diagnostics| anyhow::anyhow!("MIR lowering failed: {diagnostics:#?}"))?;
-    Ok(Some(CompiledProgram { mir, async_frames }))
+    Ok(Some(CompiledProgram {
+        mir,
+        async_frames,
+        capabilities,
+    }))
 }
 
 fn load_locked_dependency_sources(

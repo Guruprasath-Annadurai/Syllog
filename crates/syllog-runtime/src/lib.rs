@@ -8,6 +8,8 @@ pub use task::*;
 
 use anyhow::Context;
 use std::collections::HashSet;
+use syllog_ir::{CapabilityManifest, Effect};
+use wasmparser::{Parser, Payload};
 use wasmtime::{Config, Engine, Linker, Module, ResourceLimiter, Store, Trap};
 
 const WASM_PAGE_BYTES: u64 = 64 * 1024;
@@ -18,6 +20,7 @@ pub struct SandboxPolicy {
     fuel: u64,
     max_memory_bytes: usize,
     capabilities: HashSet<HostCapability>,
+    effects: HashSet<Effect>,
 }
 
 impl SandboxPolicy {
@@ -37,6 +40,7 @@ impl SandboxPolicy {
             fuel,
             max_memory_bytes,
             capabilities: HashSet::new(),
+            effects: HashSet::new(),
         })
     }
 
@@ -44,6 +48,13 @@ impl SandboxPolicy {
     #[must_use]
     pub fn allow(mut self, capability: HostCapability) -> Self {
         self.capabilities.insert(capability);
+        self
+    }
+
+    /// Grants one statically declared effect capability.
+    #[must_use]
+    pub fn allow_effect(mut self, effect: Effect) -> Self {
+        self.effects.insert(effect);
         self
     }
 }
@@ -108,6 +119,18 @@ pub enum SandboxError {
         module: String,
         /// Import field name.
         name: String,
+    },
+    /// Artifact effect requirements exceed the deployment policy.
+    #[error("effect capability '{effect}' is not allowed by the sandbox policy")]
+    EffectDenied {
+        /// Stable source spelling of the denied effect.
+        effect: &'static str,
+    },
+    /// The embedded capability manifest is malformed, duplicated, or unsupported.
+    #[error("invalid Syllog capability manifest: {reason}")]
+    InvalidCapabilityManifest {
+        /// Validation failure without artifact-controlled formatting.
+        reason: String,
     },
     /// The export trapped for a reason other than fuel exhaustion.
     #[error("WebAssembly export '{export}' trapped")]
@@ -196,6 +219,7 @@ impl Sandbox {
         export: &str,
         policy: &SandboxPolicy,
     ) -> Result<i32, SandboxError> {
+        enforce_effect_manifest(bytes, policy)?;
         let module = self.compile(bytes).map_err(SandboxError::Compilation)?;
         for import in module.imports() {
             let granted = policy
@@ -273,6 +297,7 @@ impl Sandbox {
         export: &str,
         policy: &SandboxPolicy,
     ) -> Result<i64, SandboxError> {
+        enforce_effect_manifest(bytes, policy)?;
         let module = self.compile(bytes).map_err(SandboxError::Compilation)?;
         for import in module.imports() {
             let granted = policy
@@ -337,4 +362,44 @@ impl Sandbox {
             }),
         }
     }
+}
+
+fn enforce_effect_manifest(bytes: &[u8], policy: &SandboxPolicy) -> Result<(), SandboxError> {
+    let mut manifest = None;
+    for payload in Parser::new(0).parse_all(bytes) {
+        let payload = payload.map_err(|error| SandboxError::InvalidCapabilityManifest {
+            reason: error.to_string(),
+        })?;
+        if let Payload::CustomSection(section) = payload
+            && section.name() == "syllog.capabilities"
+        {
+            if manifest.is_some() {
+                return Err(SandboxError::InvalidCapabilityManifest {
+                    reason: "duplicate syllog.capabilities section".into(),
+                });
+            }
+            let decoded: CapabilityManifest =
+                serde_json::from_slice(section.data()).map_err(|error| {
+                    SandboxError::InvalidCapabilityManifest {
+                        reason: error.to_string(),
+                    }
+                })?;
+            if decoded.format_version != 1 {
+                return Err(SandboxError::InvalidCapabilityManifest {
+                    reason: format!("unsupported manifest format {}", decoded.format_version),
+                });
+            }
+            manifest = Some(decoded);
+        }
+    }
+    // Foreign Wasm has no Syllog manifest and remains governed by import and
+    // resource policies. Every artifact emitted by the Syllog backend embeds it.
+    for effect in manifest.unwrap_or_default().required {
+        if !policy.effects.contains(&effect) {
+            return Err(SandboxError::EffectDenied {
+                effect: effect.as_str(),
+            });
+        }
+    }
+    Ok(())
 }

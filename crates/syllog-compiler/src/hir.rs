@@ -122,6 +122,10 @@ pub struct HirFunction {
     pub is_test: bool,
     /// Whether suspension is permitted.
     pub asynchronous: bool,
+    /// Whether this function is exported from its module.
+    pub public: bool,
+    /// Explicit source-level effect upper bound, when present.
+    pub declared_effects: Option<Vec<String>>,
     /// Parameters in declaration order.
     pub parameters: Vec<HirParameter>,
     /// Resolved result type.
@@ -201,6 +205,9 @@ impl TypedExpr {
     pub fn walk(&self, visit: &mut impl FnMut(&TypedExpr)) {
         visit(self);
         match &self.kind {
+            HirExprKind::Borrow { operand, .. } | HirExprKind::Await(operand) => {
+                operand.walk(visit);
+            }
             HirExprKind::Array(items) => {
                 for item in items {
                     item.walk(visit);
@@ -242,7 +249,6 @@ impl TypedExpr {
                     }
                 }
             }
-            HirExprKind::Await(operand) => operand.walk(visit),
             HirExprKind::Literal(_) | HirExprKind::Reference { .. } => {}
         }
     }
@@ -252,6 +258,13 @@ impl TypedExpr {
 /// identities rather than strings.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum HirExprKind {
+    /// Creates a lexical shared or mutable reference.
+    Borrow {
+        /// Whether this is an exclusive mutable borrow.
+        mutable: bool,
+        /// Borrowed place expression.
+        operand: Box<TypedExpr>,
+    },
     /// Awaited value and suspension point.
     Await(Box<TypedExpr>),
     /// Scalar literal.

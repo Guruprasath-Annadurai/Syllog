@@ -17,13 +17,13 @@ separate evidence is recorded below.
 - [x] Pipeline fan-out uses a child scope that cancels and joins siblings
 - [x] Currently representable borrowed `Str` parameters and locals are rejected
       when an async function contains an `await`
-- [ ] General reference syntax, region inference, and a complete borrow checker
+- [x] General reference syntax and conservative local region checks (Phase 8)
+- [ ] Complete field-sensitive borrow and region inference
 - [ ] Source-level `spawn` and arbitrary nested task scopes
 
-The borrow gate is deliberately conservative. Syllog does not yet expose a
-general `&T` reference type, so this check covers the borrowed string type that
-the current type system can represent. The complete ownership and borrowing
-model remains a Phase 8 requirement.
+The borrow gate is deliberately conservative. Phase 8 added general reference
+syntax and rejects borrows crossing suspension, but complete field-sensitive
+region inference remains open in the Phase 8 ledger.
 
 ## Gate 7.2 — Versioned provider ABI
 

@@ -10,13 +10,17 @@ rust-version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+serde_json.workspace = true
 syllog-ir = { path = "../syllog-ir", version = "0.1.0" }
 thiserror.workspace = true
 tracing.workspace = true
 tokio.workspace = true
 wasmtime.workspace = true
+wasmparser.workspace = true
 
 [dev-dependencies]
+syllog-codegen-wasm = { path = "../syllog-codegen-wasm", version = "0.1.0" }
+wasm-encoder.workspace = true
 wat.workspace = true
 
 [lints]
