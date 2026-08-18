@@ -30,7 +30,7 @@ this summary.
 | Developer server | File watching, debouncing, rebuild events | Application runtime lifecycle, browser/mobile serving, stable incremental query engine |
 | Deterministic execution | Deterministic core interpreter/Wasm output and mock provider | External providers, scheduling, clocks, network, and host I/O are not deterministic |
 | Artifact provenance | Source hashes and package signatures/checksums in selected paths | Reproducible release pipeline, SBOM, signed attestations, verification UX |
-| Cross-platform support | Rust workspace is intended for Linux/macOS/Windows CI; Wasm target exists | Green public three-OS evidence, native backends, FFI, mobile, UI |
+| Cross-platform support | The complete repository gate passes in public Linux, macOS, and Windows CI; the Wasm target exists | Native backends, FFI, mobile, UI, and a stable host-platform guarantee |
 
 ## Planned
 

@@ -6,7 +6,7 @@ Syllog has bootstrap-level host support, not a stable platform guarantee.
 
 ## Compiler hosts
 
-The required CI design builds and tests the full workspace on:
+Required CI builds and tests the full workspace on:
 
 | Host | Tier | Current promise |
 | --- | --- | --- |
