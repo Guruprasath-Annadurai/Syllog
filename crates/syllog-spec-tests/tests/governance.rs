@@ -35,6 +35,9 @@ fn repository_truth_validator_rejects_missing_and_contradictory_inputs() {
 
     assert!(codes.contains(&"repository.identity.cargo"));
     assert!(codes.contains(&"repository.identity.readme"));
+    assert!(codes.contains(&"repository.toolchain.pin"));
+    assert!(codes.contains(&"repository.toolchain.msrv"));
+    assert!(codes.contains(&"repository.toolchain.ci"));
     assert!(codes.contains(&"repository.document.missing"));
     assert!(codes.contains(&"repository.ci.default_branch"));
     assert!(codes.contains(&"repository.authority.parser"));

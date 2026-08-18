@@ -45,7 +45,7 @@ code and is not a Cargo workspace member.
 
 ## Build and test
 
-Install `rustup`, Git, and `cargo-deny 0.20.2`. The repository pins Rust 1.85.0
+Install `rustup`, Git, and `cargo-deny 0.20.2`. The repository pins Rust 1.86.0
 with `rustfmt` and `clippy` in `rust-toolchain.toml`.
 
 ```bash
@@ -58,7 +58,7 @@ bash scripts/ci.sh
 ```
 
 The separate Rust 1.88.0 toolchain is needed only to install the pinned
-`cargo-deny`; repository code is built with Rust 1.85.0. See
+`cargo-deny`; repository code is built with Rust 1.86.0. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and
 [supported platforms](docs/supported-platforms.md) for current coverage.
 

@@ -6,9 +6,10 @@ compatibility and host capabilities.
 
 ## Required tools
 
-- Rust `1.85.0` with `rustfmt` and `clippy`.
+- Rust `1.86.0` with `rustfmt` and `clippy`. Wasmtime 36 and its Cranelift
+  dependencies establish this minimum supported Rust version.
 - `cargo-deny 0.20.2`. It requires Rust 1.88 to build, but audits the Rust
-  1.85-compatible Syllog workspace after installation. Install it with
+  1.86-compatible Syllog workspace after installation. Install it with
   `cargo +1.88.0 install --locked cargo-deny --version 0.20.2`.
 - Git and a Linux, macOS, or Windows host. Windows uses Git Bash for the
   repository gate; see `docs/supported-platforms.md` for the bootstrap support

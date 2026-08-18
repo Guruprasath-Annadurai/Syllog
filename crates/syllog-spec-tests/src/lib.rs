@@ -432,6 +432,25 @@ pub fn validate_repository_truth(repository: &Path) -> io::Result<Vec<Repository
         "repository.identity.readme",
         &mut issues,
     )?;
+    for (path, needle, code) in [
+        (
+            "rust-toolchain.toml",
+            "channel = \"1.86.0\"",
+            "repository.toolchain.pin",
+        ),
+        (
+            "Cargo.toml",
+            "rust-version = \"1.86\"",
+            "repository.toolchain.msrv",
+        ),
+        (
+            ".github/workflows/ci.yml",
+            "RUST_TOOLCHAIN: 1.86.0",
+            "repository.toolchain.ci",
+        ),
+    ] {
+        check_contains(repository, path, needle, code, &mut issues)?;
+    }
 
     for document in REQUIRED_ROOT_DOCUMENTS {
         if !repository.join(document).is_file() {
