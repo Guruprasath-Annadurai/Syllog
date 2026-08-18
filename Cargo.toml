@@ -26,7 +26,7 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 authors = ["Guruprasath Annadurai"]
-repository = "https://github.com/syllog-lang/syllog"
+repository = "https://github.com/Guruprasath-Annadurai/Syllog"
 rust-version = "1.85"
 
 [workspace.dependencies]

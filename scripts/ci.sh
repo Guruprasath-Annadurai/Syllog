@@ -22,9 +22,9 @@ if [[ "$installed_cargo_deny_version" != "$required_cargo_deny_version" ]]; then
 fi
 
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-cargo build --workspace
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-targets --all-features
+cargo build --workspace --all-targets --all-features
 cargo deny check
 cargo run --quiet -p syllog-cli -- check examples/hello_agent.syl
 cargo run --quiet -p syllog-cli -- check examples/semantic_frontend.syl --json

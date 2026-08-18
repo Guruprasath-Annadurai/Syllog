@@ -289,7 +289,7 @@ fn check_file(path: &Path, format: DiagnosticFormat) -> anyhow::Result<ExitCode>
             if compilation.success() {
                 let declaration_count = compilation.ast.as_ref().map_or(0, |ast| ast.items.len());
                 println!(
-                    "checked {} ({declaration_count} declarations; parse → resolve → type-check)",
+                    "checked {} ({declaration_count} declarations; parse → validate → resolve → type-check → ownership → effect-check)",
                     path.display()
                 );
             }

@@ -1,0 +1,34 @@
+name: Bug report
+description: Report a reproducible Syllog compiler, runtime, package, or CLI defect
+title: "[bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not report security vulnerabilities here; use the private process in SECURITY.md."
+  - type: input
+    id: revision
+    attributes:
+      label: Syllog revision
+      description: Commit SHA or release version.
+    validations:
+      required: true
+  - type: dropdown
+    id: host
+    attributes:
+      label: Host
+      options: [Linux, macOS, Windows, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Include source, command, expected result, and actual result without secrets.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Paste redacted human or JSON diagnostics and backtrace if available.

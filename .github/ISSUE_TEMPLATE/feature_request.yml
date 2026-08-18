@@ -1,0 +1,26 @@
+name: Feature proposal
+description: Propose a use case; syntax and trust-boundary changes require an RFC
+title: "[proposal] "
+labels: [proposal]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and evidence
+      description: Describe the concrete user problem without prescribing syntax first.
+    validations:
+      required: true
+  - type: textarea
+    id: semantics
+    attributes:
+      label: Required semantics
+      description: Describe static/runtime behavior, diagnostics, failure modes, and tests.
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Security and compatibility
+      description: Identify authority, limits, trust boundaries, migrations, and alternatives.
+    validations:
+      required: true

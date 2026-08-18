@@ -25,7 +25,7 @@ jobs:
       SYLLOG_ANTHROPIC_TEST_MODEL: ${{ vars.SYLLOG_ANTHROPIC_TEST_MODEL }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.85.0 --profile minimal

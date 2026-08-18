@@ -1,70 +1,76 @@
-# Syllog — Design Document
+# Syllog Design
 
-**Author:** Guruprasath Annadurai
-**Status:** Draft (v0.1 scope)
+**Status:** Bootstrap implementation; language version 0.1.0, edition 2026.
 
-## What Syllog is
+## Product boundary
 
-Syllog is a small, statically-typed programming language, built from scratch
-(hand-written lexer, parser, type checker, bytecode compiler, and VM — no
-parser generators, no borrowed runtimes). It is influenced by Rust (explicit
-types, expression-oriented syntax) and ML-family languages (type inference,
-pattern matching), but makes its own tradeoffs rather than cloning either.
+Syllog is exploring whether a statically inspectable language and a
+deny-by-default component runtime can improve the construction of bounded AI
+systems. The current repository proves parts of a compiler and runtime path. It
+does not prove enterprise readiness, native portability, full memory safety,
+deterministic external-model behavior, or safe autonomous improvement.
 
-## What Syllog is not (yet)
+## Sources of authority
 
-To keep this honest and buildable, the following are explicitly **out of
-scope** for v1.0 and are not claimed anywhere in this repo until they exist
-as working, tested code:
+There is one active parser. `crates/syllog-parser/src/grammar.pest` is the
+authoritative grammar consumed by Pest, and `crates/syllog-parser` owns AST
+construction and source spans. `docs/grammar.ebnf` is an explanatory projection;
+if it disagrees with the Pest grammar, the Pest grammar and conformance tests win.
 
-- Native mobile UI generation
-- Any claim of a fixed "accuracy" percentage — Syllog does not have an
-  accuracy metric; if we publish a number (e.g. "type checker catches N% of
-  a bug corpus"), it will link to the benchmark that produced it.
-- Any interaction with the internal weights/activations of third-party LLMs
-  accessed over an API — this is not technically possible for closed models
-  and Syllog will never claim to do it.
+There is one active compiler pipeline. `crates/syllog-compiler` orchestrates
+parsing, domain validation, resolution, type checking, ownership/effect checks,
+HIR/MIR lowering, and diagnostic presentation through dedicated workspace
+crates. Backends may consume only MIR accepted by `syllog-ir`'s verifier. The
+reference interpreter defines behavior for the executable subset and is compared
+with the Wasm backend by conformance tests.
 
-## Core design goals
+The pre-workspace hand-written lexer/parser under root `src/` is historical and
+not a Cargo workspace member. It is retained for provenance only and must not be
+extended or cited as the current implementation.
 
-1. **Small, learnable core.** A programmer should be able to read the whole
-   grammar in one sitting.
-2. **Errors that teach.** Every compiler error carries a source span and a
-   plain-English explanation, modeled on `rustc`/Elm diagnostics.
-3. **Predictable performance.** Bytecode VM with a documented instruction
-   set; no hidden allocations in hot paths.
-4. **Self-hosting-capable standard library.** As much of the stdlib as
-   possible is written in Syllog itself, once the language can support it.
+## Current compiler path
 
-## Planned (not yet built) directions
-
-These are real, concrete engineering directions — not claims — to be
-tackled after the core language (lexer → parser → type checker → VM) is
-solid and tested:
-
-- **LLM tooling DSL:** first-class syntax for typed calls to LLM APIs
-  (`agent`, `prompt` as language constructs that compile to ordinary typed
-  HTTP calls), plus a stdlib module for self-consistency checking (running
-  a prompt N times and diffing outputs) as a real, non-fabricated substitute
-  for "auditing" a closed model's reasoning.
-- **Mobile target:** compiling Syllog business-logic modules to a library
-  callable from Kotlin/Swift, or to WASM embeddable in a mobile shell. UI
-  is out of scope — Syllog targets logic, not rendering.
-
-## Grammar
-
-See [`grammar.ebnf`](./grammar.ebnf).
-
-## Example program (target syntax, not yet all implemented)
-
-```syllog
-fn fib(n: Int) -> Int {
-    if n < 2 { return n }
-    return fib(n - 1) + fib(n - 2)
-}
-
-fn main() {
-    let result = fib(10)
-    print(result)
-}
+```text
+source bytes
+  -> Pest grammar and span-aware AST             syllog-parser
+  -> agent/pipeline/safety declaration checks    syllog-compiler
+  -> symbols, names, and types                    syllog-semantic
+  -> limited affine/borrow/effect checks          syllog-semantic/compiler
+  -> typed HIR                                    syllog-compiler
+  -> control-flow MIR and verifier                syllog-ir
+  -> reference execution                          syllog-interpreter
+     or deterministic Wasm emission               syllog-codegen-wasm
+  -> bounded component execution                  syllog-runtime
 ```
+
+Failures at trust boundaries are diagnostics or typed errors. A parser failure
+currently stops AST production; recovery to a partial AST is not implemented.
+
+## Design priorities
+
+1. Make one small language subset coherent from source through both execution
+   paths.
+2. Keep diagnostics stable, span-aware, and machine-readable.
+3. Deny undeclared host capabilities and bound runtime resources.
+4. Version public source, diagnostic, manifest, lockfile, and artifact formats.
+5. Prefer conformance and adversarial tests over readiness claims.
+
+## Compatibility and security
+
+Language and format changes follow
+[`docs/governance/versioning.md`](governance/versioning.md). New syntax, effects,
+capabilities, trust boundaries, registry protocols, ownership rules, or runtime
+ABIs require an RFC. Architectural changes require an ADR. Runtime controls are
+documented in [`docs/runtime-foundations.md`](runtime-foundations.md); controls
+listed as missing there must not be inferred from aspirational language syntax.
+
+## Explicit non-goals for the current release
+
+- Native mobile UI or native machine-code generation.
+- Access to hidden reasoning or activations of closed model APIs.
+- AGI, ASI, consciousness, guaranteed correctness, or self-promotion.
+- A stable public registry or production secret-management service.
+- Rust-equivalent borrow checking or memory-safety claims.
+
+The detailed implemented/partial/planned split is maintained in
+[`docs/feature-status.md`](feature-status.md).

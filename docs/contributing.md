@@ -10,7 +10,9 @@ compatibility and host capabilities.
 - `cargo-deny 0.20.2`. It requires Rust 1.88 to build, but audits the Rust
   1.85-compatible Syllog workspace after installation. Install it with
   `cargo +1.88.0 install --locked cargo-deny --version 0.20.2`.
-- Git and a supported macOS or Linux development host.
+- Git and a Linux, macOS, or Windows host. Windows uses Git Bash for the
+  repository gate; see `docs/supported-platforms.md` for the bootstrap support
+  level.
 
 The repository's `rust-toolchain.toml` is authoritative. Developers using
 rustup receive the pinned toolchain automatically.
@@ -36,10 +38,10 @@ For behavior changes:
 bash scripts/ci.sh
 ```
 
-The script verifies formatting, strict Clippy lints, all workspace tests, a
-workspace build, dependency advisories/licenses/bans/sources, and checked-in
-Syllog programs in human and JSON diagnostic modes. Pull requests must pass the
-same gate on Linux and macOS.
+The script verifies formatting, strict Clippy lints, all targets with all
+features, workspace tests/builds, dependency advisories/licenses/bans/sources,
+and checked-in Syllog programs in human and JSON diagnostic modes. Pull requests
+must pass the same gate on Linux, macOS, and Windows.
 
 ## Compatibility expectations
 
