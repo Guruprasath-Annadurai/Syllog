@@ -15,8 +15,9 @@ and coordinates remediation and disclosure with the reporter.
 Sandbox imports and deployment capabilities are denied by default. Build and
 runtime inputs are treated as untrusted. Secrets are represented by opaque
 capability handles and are excluded from diagnostics, traces, caches, artifacts,
-and test snapshots. Release artifacts require checksums; later enterprise phases
-add signed provenance and SBOMs before `1.0`.
+and test snapshots. No stable release artifacts exist today. Checksums, signed
+provenance, SBOMs, and a reproducible release workflow are mandatory before a
+production-readiness claim.
 
 ## Compatibility
 

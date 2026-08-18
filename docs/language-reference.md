@@ -1,6 +1,6 @@
 # Syllog Language Reference Manual
 
-Version 0.1-draft · 3 August 2026
+Version 0.1-draft · 18 August 2026
 
 ## 1. Status and conformance
 
@@ -22,11 +22,11 @@ Sections 2–11 are design-only except where a rule is explicitly promoted in
 A tool must not claim full v1 conformance until every mandatory static and
 dynamic semantic has been promoted and implemented.
 
-Syllog is a memory-safe, expression-oriented systems language with explicit
-effects and domain constructs for native applications, streaming agent graphs,
-audited optimization loops, and capability-restricted runtime evolution. AI
-constructs do not weaken the ordinary type, ownership, effect, or capability
-rules.
+The design target is an expression-oriented language with explicit effects and
+domain constructs for bounded AI components. The current implementation has a
+limited ownership/effect checker and must not be described as memory-safe,
+production-ready, or capable of autonomous runtime evolution. Design-only AI
+constructs are requirements proposals, not executable features.
 
 ## 2. Source text and lexical structure
 
@@ -85,9 +85,9 @@ pub fn flush(batch: &mut Batch) -> Result<(), Error> { batch.send() }
 
 ## 4. Core grammar
 
-The following EBNF is normative at the syntactic level; semantic restrictions
-in later sections still apply. `IDENT`, `LITERAL`, and balanced token trees are
-lexical productions.
+The following EBNF is design-only. The authoritative implemented grammar is
+`crates/syllog-parser/src/grammar.pest`; `IDENT`, `LITERAL`, and balanced token
+trees below describe the intended direction and may exceed that grammar.
 
 ```ebnf
 compilation-unit = [ "module" path ] , { use-decl | item } ;
@@ -394,10 +394,10 @@ It produces a typed-syntax `Ast` with declarations, types, statements,
 expressions, patterns, match arms, call arguments, and source spans. "Typed"
 here means annotations are represented structurally. The current semantic pass
 resolves names and implemented algebraic types, checks expression and pipeline
-compatibility, and checks supported closed matches for exhaustiveness. The
-complete v1 examples still contain declarations
+compatibility, and checks supported closed matches for exhaustiveness. The v1
+design fixtures contain declarations
 such as `component`, `impl`, `mesh`, `probe`, `evo`, and `asi_loop` outside this
-milestone and therefore remain future conformance fixtures.
+milestone. They are not conformance fixtures and do not currently parse.
 
 ### 14.1 Executable normative rules
 
@@ -428,30 +428,30 @@ diagnostic behavior follows the compatibility policy in §15.
 
 ## 15. Diagnostics, profiles, and security
 
-Diagnostics carry byte span, Unicode line/column, stable code, explanation, and
-machine-applicable fixes where unambiguous. Parsing recovers at item boundaries;
-type checking continues with error types without emitting executable artifacts.
+Diagnostics carry byte span, Unicode line/column, stable code, and explanation.
+Machine-applicable fixes are not implemented. Parsing currently stops at the
+first Pest syntax failure and produces no partial AST; later phases accumulate
+selected independent diagnostics only after parsing succeeds.
 The implemented configuration diagnostic codes and validation rules are defined
 in [`docs/diagnostics.md`](diagnostics.md).
 Implemented name resolution, algebraic typing, pipeline compatibility, and
 match-exhaustiveness semantics are detailed in
 [`docs/semantic-analysis.md`](semantic-analysis.md).
 
-Profiles are `dev`, `release`, `deterministic`, `mobile`, `wasm-sandbox`, and
-`safety-critical`. Safety-critical forbids `unsafe`, ambient capabilities,
-unbounded allocation, unwinding, dynamic linking, unpinned providers, and
-unverified evolution. Reproducible builds pin compiler, target pack, provider
-schema, tokenizer, and dependencies and emit an SBOM plus provenance statement.
+Profiles named elsewhere in this document are design-only. The bootstrap project
+manifest and runtime policy implement only a subset of profile/capability
+behavior. The repository does not yet emit a release SBOM or signed provenance
+statement and does not claim reproducible cross-platform release artifacts.
 
-The compiler treats prompts, model output, foreign input, generated code, Wasm,
-proofs, and probe frames as untrusted. Taint analysis prevents untrusted strings
-from becoming capabilities, module paths, SQL, shell commands, or native symbols
-without typed validation. Logs redact secrets and tenant data by type. Package
-signatures establish provenance, not trust; policy still constrains capabilities.
+Prompts, model output, foreign input, generated code, packages, and Wasm must be
+treated as untrusted by future implementations. General taint analysis and
+type-directed secret redaction are not implemented. Current package signatures
+authenticate selected archive bytes but do not establish package safety.
 
 ## 16. End-to-end examples
 
-The normative, complete programs are maintained as executable-design fixtures:
+The following are non-executable design fixtures. They are retained to capture
+requirements, but the current parser rejects unsupported constructs in them:
 
 - `examples/native_mobile.syl`: reactive state, native UI tree, async HTTP, and
   ownership-explicit Swift/Kotlin bridges.
@@ -460,5 +460,5 @@ The normative, complete programs are maintained as executable-design fixtures:
 - `examples/autonomous_evo.syl`: activation probes, proof-gated safety bounds,
   bounded Wasm evolution, atomic generations, and audited optimization.
 
-They contain concrete types, budgets, policies, endpoints, error paths, and
-lifecycle behavior; no ellipses or placeholder bodies are used.
+They are not part of conformance and must not be used as evidence of native UI,
+production agent execution, probing, proof verification, evolution, or ASI.

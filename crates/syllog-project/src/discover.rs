@@ -49,6 +49,11 @@ pub enum ProjectError {
 /// Returns an error when the start path is inaccessible, no manifest exists,
 /// or the nearest manifest is invalid.
 pub fn discover(start: &Path) -> Result<Project, ProjectError> {
+    let reported_start = if start.is_file() {
+        start.parent().unwrap_or(start).to_owned()
+    } else {
+        start.to_owned()
+    };
     let resolved = start
         .canonicalize()
         .map_err(|source| ProjectError::StartPath {
@@ -73,6 +78,9 @@ pub fn discover(start: &Path) -> Result<Project, ProjectError> {
         }
     }
     Err(ProjectError::NotFound {
-        start: start_directory,
+        // Canonical Windows paths can acquire a `\\?\` prefix or resolve
+        // through a junction. Diagnostics should preserve the path the user
+        // supplied while discovery itself continues to use the canonical path.
+        start: reported_start,
     })
 }

@@ -121,3 +121,25 @@ fn successful_json_check_contains_no_human_status_text() {
     fs::remove_file(&source_file).expect("remove temporary source");
     fs::remove_dir(&directory).expect("remove temporary directory");
 }
+
+#[test]
+fn successful_human_check_reports_every_frontend_phase() {
+    let directory =
+        std::env::temp_dir().join(format!("syllog-cli-human-ok-test-{}", std::process::id()));
+    fs::create_dir_all(&directory).expect("temporary test directory");
+    let source_file = directory.join("valid.syl");
+    fs::write(&source_file, "fn unit() -> () {}\n").expect("temporary Syllog source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_syllog"))
+        .args(["check", source_file.to_str().expect("UTF-8 test path")])
+        .output()
+        .expect("syllog process must start");
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).expect("status must be UTF-8");
+    assert!(stdout.contains("parse → validate → resolve → type-check → ownership → effect-check"));
+
+    fs::remove_file(&source_file).expect("remove temporary source");
+    fs::remove_dir(&directory).expect("remove temporary directory");
+}

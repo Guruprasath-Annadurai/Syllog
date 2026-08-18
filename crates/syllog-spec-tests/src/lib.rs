@@ -22,6 +22,16 @@ const REQUIRED_SECTIONS: [&str; 4] = [
     "## Security impact",
 ];
 
+const CANONICAL_REPOSITORY_URL: &str = "https://github.com/Guruprasath-Annadurai/Syllog";
+
+const REQUIRED_ROOT_DOCUMENTS: [&str; 5] = [
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "ROADMAP.md",
+    "SECURITY.md",
+    "docs/supported-platforms.md",
+];
+
 /// One executable language conformance case.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConformanceCase {
@@ -382,4 +392,141 @@ pub fn validate_governance(repository: &Path) -> io::Result<Vec<GovernanceIssue>
         }
     }
     Ok(issues)
+}
+
+/// One repository identity, automation, or documentation truth violation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepositoryTruthIssue {
+    /// Stable identifier suitable for CI output and regression tests.
+    pub code: &'static str,
+    /// Repository-relative path containing the violation.
+    pub path: PathBuf,
+    /// Human-readable explanation of the failed contract.
+    pub message: String,
+}
+
+/// Validates the non-negotiable repository-truth contracts for Layer 0.
+///
+/// This intentionally checks stable facts rather than parsing every file format:
+/// the canonical repository identity, default-branch CI, supported CI hosts,
+/// required community documents, and declarations of the authoritative parser
+/// and compiler pipeline.
+///
+/// # Errors
+///
+/// Returns an I/O error when a required input exists but cannot be read.
+pub fn validate_repository_truth(repository: &Path) -> io::Result<Vec<RepositoryTruthIssue>> {
+    let mut issues = Vec::new();
+
+    check_contains(
+        repository,
+        "Cargo.toml",
+        CANONICAL_REPOSITORY_URL,
+        "repository.identity.cargo",
+        &mut issues,
+    )?;
+    check_contains(
+        repository,
+        "README.md",
+        CANONICAL_REPOSITORY_URL,
+        "repository.identity.readme",
+        &mut issues,
+    )?;
+    for (path, needle, code) in [
+        (
+            "rust-toolchain.toml",
+            "channel = \"1.88.0\"",
+            "repository.toolchain.pin",
+        ),
+        (
+            "Cargo.toml",
+            "rust-version = \"1.88\"",
+            "repository.toolchain.msrv",
+        ),
+        (
+            ".github/workflows/ci.yml",
+            "RUST_TOOLCHAIN: 1.88.0",
+            "repository.toolchain.ci",
+        ),
+    ] {
+        check_contains(repository, path, needle, code, &mut issues)?;
+    }
+
+    for document in REQUIRED_ROOT_DOCUMENTS {
+        if !repository.join(document).is_file() {
+            issues.push(RepositoryTruthIssue {
+                code: "repository.document.missing",
+                path: PathBuf::from(document),
+                message: "required Layer 0 document is missing".into(),
+            });
+        }
+    }
+
+    let workflow = ".github/workflows/ci.yml";
+    for (needle, code) in [
+        ("branches: [main]", "repository.ci.default_branch"),
+        ("pull_request:", "repository.ci.pull_request"),
+        ("ubuntu-latest", "repository.ci.linux"),
+        ("macos-latest", "repository.ci.macos"),
+        ("windows-latest", "repository.ci.windows"),
+    ] {
+        check_contains(repository, workflow, needle, code, &mut issues)?;
+    }
+
+    for (path, needle, code) in [
+        (
+            "docs/design.md",
+            "crates/syllog-parser/src/grammar.pest",
+            "repository.authority.parser",
+        ),
+        (
+            "docs/design.md",
+            "crates/syllog-compiler",
+            "repository.authority.compiler",
+        ),
+        (
+            "docs/feature-status.md",
+            "## Implemented",
+            "repository.status.matrix",
+        ),
+        (
+            "docs/required-branch-checks.md",
+            "workspace (ubuntu-latest)",
+            "repository.ci.required_checks",
+        ),
+    ] {
+        check_contains(repository, path, needle, code, &mut issues)?;
+    }
+
+    Ok(issues)
+}
+
+fn check_contains(
+    repository: &Path,
+    relative: &str,
+    needle: &str,
+    code: &'static str,
+    issues: &mut Vec<RepositoryTruthIssue>,
+) -> io::Result<()> {
+    let path = repository.join(relative);
+    let contents = match fs::read_to_string(&path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            issues.push(RepositoryTruthIssue {
+                code,
+                path: PathBuf::from(relative),
+                message: "required file is missing".into(),
+            });
+            return Ok(());
+        }
+        Err(error) => return Err(error),
+    };
+    if !contents.contains(needle) {
+        issues.push(RepositoryTruthIssue {
+            code,
+            path: PathBuf::from(relative),
+            message: format!("required content is absent: {needle}"),
+        });
+    }
+    Ok(())
 }

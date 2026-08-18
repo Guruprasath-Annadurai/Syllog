@@ -6,7 +6,7 @@
 
 **Architecture:** Preserve the current parser, semantic analyzer, streaming proxy, and Wasmtime sandbox as bootstrap components. Introduce explicit typed HIR and verified MIR boundaries, then lower MIR into Wasm first and native targets second. Build the framework experience above stable compiler and project APIs, keeping compiler correctness, runtime policy, package resolution, and developer tooling as separate crates with versioned interfaces.
 
-**Tech Stack:** Rust 1.85+, Pest, Tokio, Wasmtime, wasm-encoder, Cranelift, LLVM behind an optional backend, Serde/TOML, Salsa-style incremental queries, Tower/LSP, Ed25519 signatures, OpenTelemetry, Cargo workspace tooling.
+**Tech Stack:** Rust 1.88+, Pest, Tokio, Wasmtime, wasm-encoder, Cranelift, LLVM behind an optional backend, Serde/TOML, Salsa-style incremental queries, Tower/LSP, Ed25519 signatures, OpenTelemetry, Cargo workspace tooling.
 
 ## Global Constraints
 

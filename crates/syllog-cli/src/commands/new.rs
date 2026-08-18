@@ -39,11 +39,14 @@ pub fn execute(parent: &Path, package_name: &str, template_name: &str) -> anyhow
     fs::create_dir(staging.path().join("src")).context("could not create source directory")?;
     fs::write(
         staging.path().join("Syllog.toml"),
-        template.manifest.replace("{{name}}", package_name),
+        canonical_template_text(&template.manifest.replace("{{name}}", package_name)),
     )
     .context("could not write project manifest")?;
-    fs::write(staging.path().join("src/main.syl"), template.source)
-        .context("could not write project source")?;
+    fs::write(
+        staging.path().join("src/main.syl"),
+        canonical_template_text(template.source),
+    )
+    .context("could not write project source")?;
     fs::write(
         staging.path().join(".syllog-template-version"),
         format!("{}@{}\n", template.name, template.version),
@@ -64,6 +67,11 @@ pub fn execute(parent: &Path, package_name: &str, template_name: &str) -> anyhow
         template.version
     );
     Ok(ExitCode::SUCCESS)
+}
+
+/// Produces byte-identical scaffolds even when a source checkout rewrites line endings.
+fn canonical_template_text(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
 fn validate_package_name(name: &str) -> anyhow::Result<()> {
@@ -103,5 +111,18 @@ fn template(name: &str) -> anyhow::Result<Template> {
             source: NATIVE_SOURCE,
         }),
         _ => bail!("unknown template '{name}'; expected basic, agent, or native"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::canonical_template_text;
+
+    #[test]
+    fn template_text_has_platform_independent_line_endings() {
+        assert_eq!(
+            canonical_template_text("first\r\nsecond\rthird\n"),
+            "first\nsecond\nthird\n"
+        );
     }
 }

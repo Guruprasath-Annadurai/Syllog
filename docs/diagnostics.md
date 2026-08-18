@@ -4,14 +4,15 @@ The `syllog-compiler` crate exposes `compile(filename, source) -> Compilation`.
 It runs the front end in this order:
 
 ```text
-parse -> validate -> resolve -> type_check
+parse -> validate -> resolve -> type_check -> ownership -> effect_check
 ```
 
 A syntax failure stops compilation after `parse`. Once parsing succeeds, domain
-validation and both semantic phases accumulate independent diagnostics. The
-internal compilation result retains the AST and symbol table for later compiler
-stages. `completed_phases` means that a phase was attempted, not that it emitted
-no errors.
+validation and semantic phases accumulate selected independent diagnostics. The
+ownership phase runs after type checking; effect checking runs only when HIR
+lowering is eligible. The internal compilation result retains the AST and symbol
+table for later stages. `completed_phases` means a phase was attempted, not that
+it emitted no errors, and a failed prerequisite can prevent a later phase.
 
 The default terminal renderer prints the stable code, message, source location,
 relevant source line, primary underline, and originating phase:
@@ -37,7 +38,7 @@ human-readable stderr errors.
 {
   "schema_version": 1,
   "success": false,
-  "completed_phases": ["parse", "validate", "resolve", "type_check"],
+  "completed_phases": ["parse", "validate", "resolve", "type_check", "ownership", "effect_check"],
   "diagnostics": [
     {
       "code": "SYL2003",

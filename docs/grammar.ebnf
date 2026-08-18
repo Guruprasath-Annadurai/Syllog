@@ -1,4 +1,6 @@
-(* Syllog implemented grammar — v0.1 parser subset *)
+(* Syllog implemented grammar projection — v0.1 parser subset.
+   crates/syllog-parser/src/grammar.pest is authoritative. When this file and
+   the Pest grammar differ, compiler behavior and conformance tests win. *)
 
 program          = [ module-decl ] , { use-decl } , { item } ;
 item             = [ "pub" ] , ( struct-decl | enum-decl | state-decl

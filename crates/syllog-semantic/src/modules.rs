@@ -158,33 +158,33 @@ pub fn analyze_modules(mut sources: Vec<ModuleSource>) -> ModuleAnalysis {
     let mut pending = Vec::new();
     collect_sources(&sources, &ids, &mut modules, &mut pending, &mut diagnostics);
     let dependency_sites = resolve_imports(&ids, &mut modules, pending, &mut diagnostics);
-    if let Some(cycle) = find_cycle(&modules) {
-        if let Some(first) = cycle.first().and_then(|id| modules.get(id)) {
-            let site = cycle
-                .windows(2)
-                .next()
-                .and_then(|edge| dependency_sites.get(&(edge[0], edge[1])))
-                .cloned()
-                .unwrap_or_else(|| {
-                    (
-                        first.files.first().cloned().unwrap_or_default(),
-                        Span::default(),
-                    )
-                });
-            diagnostics.push(error(
-                "SYL2404",
-                format!(
-                    "module dependency cycle: {}",
-                    cycle
-                        .iter()
-                        .filter_map(|id| modules.get(id).map(|module| module.name.as_str()))
-                        .collect::<Vec<_>>()
-                        .join(" -> ")
-                ),
-                site.0,
-                site.1,
-            ));
-        }
+    if let Some(cycle) = find_cycle(&modules)
+        && let Some(first) = cycle.first().and_then(|id| modules.get(id))
+    {
+        let site = cycle
+            .windows(2)
+            .next()
+            .and_then(|edge| dependency_sites.get(&(edge[0], edge[1])))
+            .cloned()
+            .unwrap_or_else(|| {
+                (
+                    first.files.first().cloned().unwrap_or_default(),
+                    Span::default(),
+                )
+            });
+        diagnostics.push(error(
+            "SYL2404",
+            format!(
+                "module dependency cycle: {}",
+                cycle
+                    .iter()
+                    .filter_map(|id| modules.get(id).map(|module| module.name.as_str()))
+                    .collect::<Vec<_>>()
+                    .join(" -> ")
+            ),
+            site.0,
+            site.1,
+        ));
     }
     for module in modules.values_mut() {
         module.interface_hash = interface_hash(module, &sources);
