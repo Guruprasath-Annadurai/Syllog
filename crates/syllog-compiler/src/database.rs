@@ -180,14 +180,14 @@ impl IncrementalCompilerDatabase {
                         .next()
                         .expect("HIR has one module");
                     remap_module(&mut module, target);
-                    if let Some(candidate) = program.entry.map(|id| remap_id(id, target)) {
-                        if entry.replace(candidate).is_some() {
-                            diagnostics.push(database_diagnostic(
-                                filename,
-                                "SYL3002",
-                                "package declares more than one main function",
-                            ));
-                        }
+                    if let Some(candidate) = program.entry.map(|id| remap_id(id, target))
+                        && entry.replace(candidate).is_some()
+                    {
+                        diagnostics.push(database_diagnostic(
+                            filename,
+                            "SYL3002",
+                            "package declares more than one main function",
+                        ));
                     }
                     modules.push(module);
                 }

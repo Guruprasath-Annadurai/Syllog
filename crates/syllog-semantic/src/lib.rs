@@ -828,25 +828,23 @@ impl<'a> Analyzer<'a> {
     fn infer_path(&mut self, segments: &[String], span: Span) -> ResolvedType {
         if let Some((enum_name, variant_name)) = split_constructor_path(segments)
             && let Some(definition) = self.enums.get(enum_name)
-        {
-            if let Some((_, fields)) = definition
+            && let Some((_, fields)) = definition
                 .variants
                 .iter()
                 .find(|(name, _)| name == variant_name)
-            {
-                if fields.is_empty() {
-                    return ResolvedType::Enum(enum_name.to_owned());
-                }
-                self.push_error(
-                    "SYL2101",
-                    format!(
-                        "variant '{enum_name}::{variant_name}' requires {} value(s)",
-                        fields.len()
-                    ),
-                    span,
-                );
-                return ResolvedType::Error;
+        {
+            if fields.is_empty() {
+                return ResolvedType::Enum(enum_name.to_owned());
             }
+            self.push_error(
+                "SYL2101",
+                format!(
+                    "variant '{enum_name}::{variant_name}' requires {} value(s)",
+                    fields.len()
+                ),
+                span,
+            );
+            return ResolvedType::Error;
         }
         self.push_error(
             "SYL2003",

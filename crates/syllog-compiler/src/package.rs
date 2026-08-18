@@ -265,14 +265,14 @@ fn link_sources(
                     })
                     .definitions
                     .extend(lowered.definitions);
-                if let Some(candidate) = candidate {
-                    if entry.replace(candidate).is_some() {
-                        diagnostics.push(package_error(
-                            &source.file,
-                            "SYL3002",
-                            "package declares more than one main function",
-                        ));
-                    }
+                if let Some(candidate) = candidate
+                    && entry.replace(candidate).is_some()
+                {
+                    diagnostics.push(package_error(
+                        &source.file,
+                        "SYL3002",
+                        "package declares more than one main function",
+                    ));
                 }
             }
             Err(errors) => {

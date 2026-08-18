@@ -45,7 +45,7 @@ code and is not a Cargo workspace member.
 
 ## Build and test
 
-Install `rustup`, Git, and `cargo-deny 0.20.2`. The repository pins Rust 1.86.0
+Install `rustup` and Git. The repository pins Rust 1.88.0
 with `rustfmt` and `clippy` in `rust-toolchain.toml`.
 
 ```bash
@@ -57,8 +57,8 @@ cargo +1.88.0 install --locked cargo-deny --version 0.20.2
 bash scripts/ci.sh
 ```
 
-The separate Rust 1.88.0 toolchain is needed only to install the pinned
-`cargo-deny`; repository code is built with Rust 1.86.0. See
+The same Rust 1.88.0 toolchain builds Syllog and installs the pinned
+`cargo-deny`. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and
 [supported platforms](docs/supported-platforms.md) for current coverage.
 

@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.86.0 --profile minimal
+        run: rustup toolchain install 1.88.0 --profile minimal
 
       - name: Run isolated live smoke contracts
-        run: cargo +1.86.0 test -p syllog-provider-contract-tests --test live_providers -- --ignored --test-threads=1
+        run: cargo +1.88.0 test -p syllog-provider-contract-tests --test live_providers -- --ignored --test-threads=1

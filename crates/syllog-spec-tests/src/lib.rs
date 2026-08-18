@@ -435,17 +435,17 @@ pub fn validate_repository_truth(repository: &Path) -> io::Result<Vec<Repository
     for (path, needle, code) in [
         (
             "rust-toolchain.toml",
-            "channel = \"1.86.0\"",
+            "channel = \"1.88.0\"",
             "repository.toolchain.pin",
         ),
         (
             "Cargo.toml",
-            "rust-version = \"1.86\"",
+            "rust-version = \"1.88\"",
             "repository.toolchain.msrv",
         ),
         (
             ".github/workflows/ci.yml",
-            "RUST_TOOLCHAIN: 1.86.0",
+            "RUST_TOOLCHAIN: 1.88.0",
             "repository.toolchain.ci",
         ),
     ] {
